@@ -63,7 +63,7 @@ async function loadItems() {
   $("items").replaceChildren(...(items.length
     ? items.map(itemNode)
     : [h("li", { className: "row", textContent: myTeacher
-        ? "You do not handle any department yet. Your own status is above once your profile loads."
+        ? "Nothing to update. Your teacher record is hidden from the board, so contact the developer."
         : "Your account has no teacher record. Contact the developer." })]));
 }
 
@@ -85,6 +85,7 @@ function itemNode(it) {
   const head = h("div", { className: "info" }, h("span", { className: "name", textContent: it.name }),
     h("span", { className: "meta", textContent: kindLabel }), meta);
   const li = h("li", { className: "item" }, head, pill, h("div", { className: "actions" }, ...buttons), msg);
+  if (it.kind === "department" && it.owner) li.append(hoursNode(it));
   if (it.owner) li.append(delegatesNode(it));
   return li;
 }
@@ -104,6 +105,29 @@ async function save(it, status, buttons, msg, paint) {
   it.updated_at = data[0].updated_at;
   paint();
   say(msg, `Saved at ${timeFmt.format(new Date(data[0].updated_at))}`);
+}
+
+// ---------- opening and closing time (departments the teacher handles) ----------
+function hoursNode(it) {
+  const trim = (v) => (v ? v.slice(0, 5) : "");
+  const open = h("input", { type: "time", id: `open-${it.id}`, value: trim(it.open_time) });
+  const close = h("input", { type: "time", id: `close-${it.id}`, value: trim(it.close_time) });
+  const msg = h("p", { className: "msg", hidden: true });
+  const saveBtn = h("button", { type: "button", className: "btn", textContent: "Save hours" });
+  saveBtn.addEventListener("click", async () => {
+    if (open.value && close.value && close.value <= open.value)
+      return say(msg, "The closing time must be after the opening time.", true);
+    saveBtn.disabled = true;
+    const { data, error } = await supabase.from("departments")
+      .update({ open_time: open.value || null, close_time: close.value || null })
+      .eq("id", it.id).select("open_time, close_time");
+    saveBtn.disabled = false;
+    if (error || !data || data.length !== 1) { console.error(error); return say(msg, "Hours not saved.", true); }
+    say(msg, "Hours saved.");
+  });
+  return h("div", { className: "hours" },
+    h("label", { htmlFor: open.id, textContent: "Opens" }), open,
+    h("label", { htmlFor: close.id, textContent: "Closes" }), close, saveBtn, msg);
 }
 
 // ---------- delegates ----------
