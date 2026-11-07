@@ -1,24 +1,15 @@
--- Run AFTER schema.sql. Edit names to match your school, then Run.
+-- Run AFTER schema.sql and the migrations. (Departments are now added by migration_03.)
 
--- 1) Starting departments (the four units in the questionnaire).
-insert into public.departments (name, category) values
-  ('Clinic',               'clinic'),
-  ('Library',              'library'),
-  ('Stockroom',            'stockroom'),
-  ('Computer Laboratory 1','computer_lab'),
-  ('Computer Laboratory 2','computer_lab');
-
--- 2) Make YOUR account the first admin.
+-- 1) Make YOUR account the first admin (the developer).
 --    First create it: Supabase > Authentication > Users > Add user (tick Auto Confirm).
-update public.profiles set role = 'admin'
+update public.profiles set role = 'admin', approved = true
 where id = (select id from auth.users where email = 'YOUR-EMAIL@example.com');
 
--- 3) Add a teacher (repeat per teacher, or import many later with tools/import_data.py).
---    Link profile_id only for teachers who have a login account.
--- insert into public.teachers (full_name) values ('Teacher Full Name');
--- insert into public.teachers (full_name, profile_id)
---   values ('Teacher With Account', (select id from auth.users where email = 'teacher@example.com'));
+-- 2) Teachers register themselves on login.html; do NOT add them by hand.
+--    If you do not want your own account on the board, hide it:
+-- update public.teachers set is_active = false
+-- where profile_id = (select id from auth.users where email = 'YOUR-EMAIL@example.com');
 
--- 4) Check the board views.
+-- 3) Check the board views.
 -- select * from public.departments_board;
 -- select * from public.teachers_board;

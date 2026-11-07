@@ -7,28 +7,19 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="css/styles.css">
-<title>Update panel | LYFJSHS Availability Board</title>
-<script src="https://unpkg.com/lucide@latest"></script>
+<title>My panel | LYFJSHS Availability Board</title>
 </head>
 <body>
 <header class="site">
   <div class="wrap">
-    <div class="logo" aria-hidden="true" title="LYFJSHS">
-      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="m4 6 8-4 8 4"></path><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"></path><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"></path><path d="M18 5v17"></path><path d="M6 5v17"></path><circle cx="12" cy="9" r="2"></circle></svg>
-    </div>
+    <div class="logo" aria-hidden="true" title="LYFJSHS"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="m4 6 8-4 8 4"></path><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"></path><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"></path><path d="M18 5v17"></path><path d="M6 5v17"></path><circle cx="12" cy="9" r="2"></circle></svg></div>
     <div>
-      <h1>Update panel</h1>
+      <h1>My panel</h1>
       <p class="tagline">Signed in as <strong id="who">...</strong></p>
     </div>
     <nav>
-      <a href="index.html">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
-        View the board
-      </a>
-      <button id="logout" type="button" class="link">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-        Log out
-      </button>
+      <a href="index.html">View the board</a>
+      <button id="logout" type="button" class="link">Log out</button>
     </nav>
   </div>
 </header>
@@ -37,76 +28,46 @@
   <p id="dash-message" class="notice" role="status" hidden></p>
 
   <section id="pending" class="card" hidden>
-    <h2 style="margin-top:0">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-      Waiting for approval
-    </h2>
-    <p>Your account is confirmed. An administrator needs to approve it before you can update statuses. Please check back later.</p>
+    <h2 style="margin-top:0">Account turned off</h2>
+    <p>This account cannot update statuses right now. Please contact the developer.</p>
   </section>
 
   <div id="panel" hidden>
-    <h2 style="margin-top:0">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-      Your statuses
-    </h2>
-    <p class="lead">Select your current status below. Students and staff will see your change immediately on the public board.</p>
+    <h2 style="margin-top:0">Your statuses</h2>
+    <p class="lead">Choose your current status. Students see the change right away.</p>
     <ul id="items" class="stack"></ul>
 
+    <section>
+      <h2>Your profile</h2>
+      <form id="profile-form" class="form">
+        <div class="field"><label for="profile-rank">Rank</label>
+          <select id="profile-rank"></select></div>
+        <div class="field"><label for="profile-description">About you</label>
+          <textarea id="profile-description" maxlength="500" placeholder="Tell students a little about you."></textarea>
+          <p class="hint">Up to 500 characters.</p></div>
+        <div class="field"><span class="label">Departments you handle</span>
+          <p class="hint">You can update the status of each department you tick.</p>
+          <div id="profile-departments"></div></div>
+        <button type="submit" class="btn primary">Save profile</button>
+        <p id="profile-message" class="msg" role="status" hidden></p>
+      </form>
+    </section>
+
     <section id="avatar-section">
-      <h2>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-        Your profile picture
-      </h2>
+      <h2>Your photo</h2>
       <div class="card" style="text-align:center">
         <div id="avatar-preview" aria-live="polite"></div>
         <div class="field" style="max-width:400px;margin:0 auto 1rem;text-align:left">
           <label for="avatar-input">Choose a picture</label>
           <input id="avatar-input" type="file" accept="image/jpeg,image/png,image/webp">
-          <p class="hint">JPG, PNG, or WebP up to 2 MB. Resized to 256&times;256 px. Visible on the public board.</p>
+          <p class="hint">JPG, PNG, or WebP up to 2 MB. Everyone who opens the board can see it.</p>
         </div>
-        <button id="avatar-remove" type="button" class="btn" hidden>
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          Remove picture
-        </button>
+        <button id="avatar-remove" type="button" class="btn" hidden>Remove picture</button>
         <p id="avatar-message" class="msg" role="status" hidden style="max-width:400px;margin:1rem auto 0;text-align:left"></p>
       </div>
     </section>
-
-    <section>
-      <h2>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><path d="M9 22v-4h6v4"></path><path d="M8 6h.01"></path><path d="M16 6h.01"></path><path d="M8 10h.01"></path><path d="M16 10h.01"></path><path d="M8 14h.01"></path><path d="M16 14h.01"></path></svg>
-        Add a department
-      </h2>
-      <form id="dept-form" class="form">
-        <div class="field">
-          <label for="dept-name">Department name</label>
-          <input id="dept-name" type="text" placeholder="e.g. Guidance Office, Science Lab" required>
-        </div>
-        <div class="field">
-          <label for="dept-category">Type</label>
-          <select id="dept-category">
-            <option value="other">Other</option>
-            <option value="clinic">Clinic</option>
-            <option value="library">Library</option>
-            <option value="stockroom">Stockroom</option>
-            <option value="computer_lab">Computer laboratory</option>
-          </select>
-        </div>
-        <button type="submit" class="btn primary">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          Add department
-        </button>
-        <p id="dept-message" class="msg" role="status" hidden></p>
-      </form>
-    </section>
   </div>
 </main>
-
 <script type="module" src="js/dashboard.js"></script>
-<script>
-  if (window.lucide && typeof window.lucide.createIcons === 'function') {
-    window.lucide.createIcons();
-  }
-</script>
 </body>
 </html>

@@ -1145,3 +1145,13 @@ li:has(> .status-not_updated):hover, li[data-status="not_updated"]:hover {
     background: #e2e8f0;
   }
 }
+
+/* Paste at the END of css/styles.css (needed for the new profile and sign-up fields). */
+textarea { width: 100%; min-height: 96px; padding: .6rem .95rem; border: 1px solid var(--rule);
+  border-radius: var(--radius-md); background: var(--paper); color: var(--ink); font: inherit;
+  font-size: .95rem; resize: vertical; box-shadow: var(--shadow-xs); }
+textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3.5px var(--accent-glow); }
+fieldset.group { border: 1px solid var(--rule); border-radius: var(--radius-md); margin: 0 0 .75rem; padding: .5rem .9rem .7rem; }
+fieldset.group legend { padding: 0 .4rem; color: var(--slate); font-size: .85rem; font-weight: 600; }
+.check { display: flex; align-items: center; gap: .55rem; min-height: 36px; margin: 0; font-weight: 500; cursor: pointer; }
+.field > .label { margin-bottom: 0; }

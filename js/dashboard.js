@@ -1,16 +1,13 @@
-// js/dashboard.js : update panel for teachers, delegates, and admins.
+// js/dashboard.js : the teacher's own panel (status, profile, photo, delegates).
 //
 // dashboard.html needs these ids:
-//   #who (span)  #logout (button)  #dash-message (p)
-//   #pending (section, hidden)  = "waiting for approval" notice
-//   #panel (section, hidden)    = the whole working panel
-//   #items (ul)                 = items this user may update
-//   #avatar-section: #avatar-preview (div) #avatar-input (input type=file) #avatar-remove (button) #avatar-message (p)
-//   #dept-form: #dept-name (input) #dept-category (select) #dept-message (p)
-// Needs sql/phase4_delegates.sql (assignable_users) and migration_02 (pictures).
+//   #who  #logout  #dash-message  #pending (hidden)  #panel (hidden)  #items (ul)
+//   #profile-form: #profile-rank (select) #profile-description (textarea)
+//                  #profile-departments (div) #profile-message (p)
+//   #avatar-preview (div) #avatar-input (file) #avatar-remove (button) #avatar-message (p)
+// Needs migrations 01 to 03 and sql/phase4_delegates.sql.
 import { supabase } from "./supabaseClient.js";
-import { requireLogin, signOut } from "./auth.js";
-import { ICONS, refreshLucide } from "./icons.js";
+import { requireLogin, signOut, fillRankSelect, fetchDepartments, renderDepartmentChecks, checkedIds } from "./auth.js";
 
 const $ = (id) => document.getElementById(id);
 const LABELS = { available: "Available", unavailable: "Unavailable", not_updated: "Status Not Updated" };
@@ -23,25 +20,30 @@ const say = (node, text, bad = false) => { node.textContent = text; node.dataset
 
 let profile, myTeacher = null, people = null;
 
-// ---------- items this user may update ----------
+async function loadMyTeacher() {
+  const { data, error } = await supabase.from("teachers")
+    .select("id, full_name, avatar_path, rank_level, description").eq("profile_id", profile.id).maybeSingle();
+  if (error) throw error;
+  myTeacher = data;
+}
+
+// ---------- statuses this teacher may update ----------
 async function loadItems() {
   const uid = profile.id, admin = profile.role === "admin";
   const owner = new Set();
   let tIds = null, dIds = null;
 
   if (!admin) {
-    const [mine, made, links] = await Promise.all([
-      supabase.from("teachers").select("id").eq("profile_id", uid),
-      supabase.from("departments").select("id").eq("created_by", uid),
+    const [handled, links] = await Promise.all([
+      myTeacher ? supabase.from("department_staff").select("department_id").eq("teacher_id", myTeacher.id) : Promise.resolve({ data: [] }),
       supabase.from("status_managers").select("entity_type, entity_id").eq("user_id", uid),
     ]);
-    for (const r of [mine, made, links]) if (r.error) throw r.error;
-    mine.data.forEach((r) => owner.add("teacher:" + r.id));
-    made.data.forEach((r) => owner.add("department:" + r.id));
-    const ids = (kind, own) => new Set([...own.map((r) => r.id),
-      ...links.data.filter((l) => l.entity_type === kind).map((l) => l.entity_id)]);
-    tIds = ids("teacher", mine.data);
-    dIds = ids("department", made.data);
+    for (const r of [handled, links]) if (r.error) throw r.error;
+    if (myTeacher) owner.add("teacher:" + myTeacher.id);
+    handled.data.forEach((r) => owner.add("department:" + r.department_id));
+    const linked = (kind) => links.data.filter((l) => l.entity_type === kind).map((l) => l.entity_id);
+    tIds = new Set([...(myTeacher ? [myTeacher.id] : []), ...linked("teacher")]);
+    dIds = new Set([...handled.data.map((r) => r.department_id), ...linked("department")]);
   }
 
   const read = (view, ids) => {
@@ -60,54 +62,34 @@ async function loadItems() {
   ];
   $("items").replaceChildren(...(items.length
     ? items.map(itemNode)
-    : [h("li", { className: "row", textContent: "You have nothing to update yet." })]));
+    : [h("li", { className: "row", textContent: myTeacher
+        ? "You do not handle any department yet. Your own status is above once your profile loads."
+        : "Your account has no teacher record. Contact the developer." })]));
 }
 
 function itemNode(it) {
   const pill = h("span"), meta = h("span", { className: "meta" });
   const msg = h("p", { className: "msg", hidden: true });
-  const li = h("li", { className: "item" });
-
   const paint = () => {
     pill.className = `pill status-${it.display_status}`;
-    li.dataset.status = it.display_status;
-    li.classList.remove("has-status-available", "has-status-unavailable", "has-status-not_updated");
-    li.classList.add(`has-status-${it.display_status}`);
     pill.replaceChildren(h("span", { className: "dot" }), LABELS[it.display_status]);
     meta.textContent = it.display_status === "not_updated"
       ? "Not updated today" : `Updated ${timeFmt.format(new Date(it.updated_at))} today`;
   };
   paint();
 
-  const btnAvailable = h("button", {
-    type: "button",
-    className: "btn btn-available",
-    onclick: () => save(it, "available", [btnAvailable, btnUnavailable], msg, paint)
-  });
-  btnAvailable.innerHTML = `${ICONS.check} Mark Available`;
+  const buttons = ["available", "unavailable"].map((s) =>
+    h("button", { type: "button", className: `btn btn-${s}`, textContent: LABELS[s], onclick: () => save(it, s, buttons, msg, paint) }));
 
-  const btnUnavailable = h("button", {
-    type: "button",
-    className: "btn btn-unavailable",
-    onclick: () => save(it, "unavailable", [btnAvailable, btnUnavailable], msg, paint)
-  });
-  btnUnavailable.innerHTML = `${ICONS.x} Mark Unavailable`;
-
-  const buttons = [btnAvailable, btnUnavailable];
-
-  const kindLabel = it.kind === "teacher" ? "Teacher" : "Department";
-  const head = h("div", { className: "info" },
-    h("span", { className: "name", textContent: it.name }),
-    h("span", { className: "meta", textContent: kindLabel }),
-    meta
-  );
-
-  li.replaceChildren(head, pill, h("div", { className: "actions" }, ...buttons), msg);
+  const kindLabel = it.kind === "teacher" ? "Your status" : (it.building ? `${it.building}, ${it.floor_level ?? ""}`.replace(/, $/, "") : "Department");
+  const head = h("div", { className: "info" }, h("span", { className: "name", textContent: it.name }),
+    h("span", { className: "meta", textContent: kindLabel }), meta);
+  const li = h("li", { className: "item" }, head, pill, h("div", { className: "actions" }, ...buttons), msg);
   if (it.owner) li.append(delegatesNode(it));
   return li;
 }
 
-// Show "Saved" only after the database confirms; zero rows means the rules blocked it.
+// "Saved" appears only after the database confirms; zero rows means the rules blocked it.
 async function save(it, status, buttons, msg, paint) {
   buttons.forEach((b) => (b.disabled = true));
   say(msg, "Saving...");
@@ -134,10 +116,8 @@ async function fetchPeople() {
 function delegatesNode(it) {
   const list = h("ul"), pick = h("select"), msg = h("p", { className: "msg", hidden: true });
   const add = h("button", { type: "button", className: "btn", textContent: "Assign" });
-  add.innerHTML = `${ICONS.plus} Assign`;
-
   const box = h("details", { className: "delegates" },
-    h("summary", { textContent: "Who can update this for me?" }), list, h("div", { className: "row-form" }, pick, add), msg);
+    h("summary", { textContent: "Let someone else update this for me" }), list, h("div", { className: "row-form" }, pick, add), msg);
 
   async function refresh() {
     try {
@@ -173,12 +153,54 @@ function delegatesNode(it) {
   return box;
 }
 
+// ---------- profile: rank, description, departments handled ----------
+async function initProfile() {
+  const msg = $("profile-message");
+  if (!myTeacher) { $("profile-form").hidden = true; return; }
+  fillRankSelect($("profile-rank"), myTeacher.rank_level ?? "");
+  $("profile-description").value = myTeacher.description ?? "";
+
+  const [depts, mine] = await Promise.all([
+    fetchDepartments(),
+    supabase.from("department_staff").select("department_id").eq("teacher_id", myTeacher.id),
+  ]);
+  if (mine.error) throw mine.error;
+  const current = new Set(mine.data.map((r) => r.department_id));
+  renderDepartmentChecks($("profile-departments"), depts, current);
+
+  $("profile-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const next = new Set(checkedIds($("profile-departments")));
+    const add = [...next].filter((id) => !current.has(id));
+    const drop = [...current].filter((id) => !next.has(id));
+
+    const upd = await supabase.from("teachers").update({
+      rank_level: $("profile-rank").value || null,
+      description: $("profile-description").value.trim() || null,
+    }).eq("id", myTeacher.id).select("id");
+    if (upd.error || upd.data.length !== 1) return say(msg, "Could not save your profile.", true);
+
+    if (add.length) {
+      const r = await supabase.from("department_staff").insert(add.map((department_id) => ({ department_id, teacher_id: myTeacher.id })));
+      if (r.error) return say(msg, "Could not save your departments.", true);
+    }
+    if (drop.length) {
+      const r = await supabase.from("department_staff").delete().eq("teacher_id", myTeacher.id).in("department_id", drop);
+      if (r.error) return say(msg, "Could not save your departments.", true);
+    }
+    add.forEach((id) => current.add(id));
+    drop.forEach((id) => current.delete(id));
+    say(msg, "Profile saved.");
+    loadItems().catch(console.error);
+  });
+}
+
 // ---------- profile picture (2 MB max, resized to 256 px) ----------
 function paintAvatar() {
   const box = $("avatar-preview");
   if (myTeacher.avatar_path) {
     const url = supabase.storage.from("avatars").getPublicUrl(myTeacher.avatar_path).data.publicUrl;
-    box.replaceChildren(Object.assign(new Image(104, 104), { src: url, alt: "Your profile picture" }));
+    box.replaceChildren(Object.assign(new Image(96, 96), { src: url, alt: "Your profile picture" }));
   } else {
     box.textContent = myTeacher.full_name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   }
@@ -195,17 +217,13 @@ async function resizeToSquare(file, size = 256) {
 
 async function removeFile(path) { if (path) await supabase.storage.from("avatars").remove([path]); }
 
-async function initAvatar() {
+function initAvatar() {
   const msg = $("avatar-message"), input = $("avatar-input");
-  const { data, error } = await supabase.from("teachers").select("id, full_name, avatar_path")
-    .eq("profile_id", profile.id).maybeSingle();
-  if (error) { console.error(error); return say(msg, "Could not load your profile picture.", true); }
-  if (!data) {
+  if (!myTeacher) {
     input.disabled = true;
     $("avatar-remove").hidden = true;
-    return say(msg, "Your account is not linked to a teacher record yet. Ask an admin.", true);
+    return say(msg, "Your account has no teacher record. Contact the developer.", true);
   }
-  myTeacher = data;
   paintAvatar();
 
   input.addEventListener("change", async () => {
@@ -220,7 +238,7 @@ async function initAvatar() {
       const path = `${profile.id}/avatar-${Date.now()}.jpg`;
       const up = await supabase.storage.from("avatars").upload(path, blob, { contentType: "image/jpeg" });
       if (up.error) throw up.error;
-      const res = await supabase.from("teachers").update({ avatar_path: path }).eq("profile_id", profile.id).select("avatar_path");
+      const res = await supabase.from("teachers").update({ avatar_path: path }).eq("id", myTeacher.id).select("avatar_path");
       if (res.error || res.data.length !== 1) { await removeFile(path); throw res.error ?? new Error("not saved"); }
       const old = myTeacher.avatar_path;
       myTeacher.avatar_path = path;
@@ -232,27 +250,12 @@ async function initAvatar() {
 
   $("avatar-remove").addEventListener("click", async () => {
     const old = myTeacher.avatar_path;
-    const { error: e } = await supabase.from("teachers").update({ avatar_path: null }).eq("profile_id", profile.id);
-    if (e) return say(msg, "Could not remove the picture.", true);
+    const { error } = await supabase.from("teachers").update({ avatar_path: null }).eq("id", myTeacher.id);
+    if (error) return say(msg, "Could not remove the picture.", true);
     myTeacher.avatar_path = null;
     await removeFile(old);
     paintAvatar();
     say(msg, "Picture removed.");
-  });
-}
-
-// ---------- add a department ----------
-function initDeptForm() {
-  const msg = $("dept-message");
-  $("dept-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const name = $("dept-name").value.trim();
-    if (!name) return say(msg, "Enter a department name.", true);
-    const { error } = await supabase.from("departments").insert({ name, category: $("dept-category").value });
-    if (error) return say(msg, error.code === "23505" ? "That department already exists." : "Could not add the department.", true);
-    $("dept-form").reset();
-    say(msg, "Department added. You can now update its status.");
-    loadItems().catch(console.error);
   });
 }
 
@@ -265,9 +268,9 @@ async function init() {
     $("logout").addEventListener("click", signOut);
     if (!profile.approved) { $("pending").hidden = false; return; }
     $("panel").hidden = false;
-    initDeptForm();
-    await Promise.all([loadItems(), initAvatar()]);
-    refreshLucide();
+    await loadMyTeacher();
+    initAvatar();
+    await Promise.all([loadItems(), initProfile()]);
   } catch (err) {
     console.error(err);
     say($("dash-message"), "Could not load your panel. Check your connection and refresh.", true);
