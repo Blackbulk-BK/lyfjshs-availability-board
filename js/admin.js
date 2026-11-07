@@ -10,6 +10,7 @@
 //   #log-list (ul)
 import { supabase } from "./supabaseClient.js";
 import { requireLogin, signOut } from "./auth.js";
+import { ICONS, refreshLucide } from "./icons.js";
 
 const $ = (id) => document.getElementById(id);
 const CATEGORIES = { clinic: "Clinic", library: "Library", stockroom: "Stockroom", computer_lab: "Computer laboratory", other: "Other" };
@@ -32,6 +33,7 @@ async function loadAll() {
     for (const r of [t, d, p, l]) if (r.error) throw r.error;
     [teachers, depts, profiles, logs] = [t.data, d.data, p.data, l.data];
     renderAll();
+    refreshLucide();
   } catch (err) { console.error(err); say("Could not load data. Check your connection.", true); }
 }
 
@@ -44,7 +46,16 @@ async function act(query, failText = "Could not save.") {
   return true;
 }
 
-const btn = (text, onclick, cls = "btn") => h("button", { type: "button", className: cls, textContent: text, onclick });
+const btn = (text, onclick, cls = "btn", iconHtml = "") => {
+  const b = h("button", { type: "button", className: cls, onclick });
+  if (iconHtml) {
+    b.innerHTML = `${iconHtml} ${text}`;
+  } else {
+    b.textContent = text;
+  }
+  return b;
+};
+
 const nameOfProfile = (id) => profiles.find((p) => p.id === id)?.full_name ?? "System";
 
 function renderAll() {
@@ -63,7 +74,7 @@ function renderPending() {
         const link = sel.value;
         if (await act(supabase.from("profiles").update({ approved: true }).eq("id", p.id)) && link)
           await act(supabase.from("teachers").update({ profile_id: p.id }).eq("id", link));
-      }));
+      }, "btn primary", ICONS.check));
   }) : [h("li", { className: "row", textContent: "No accounts are waiting for approval." })]));
 }
 
@@ -83,12 +94,12 @@ function renderTeachers() {
     const name = h("input", { value: t.full_name, "aria-label": "Teacher name" });
     const active = h("input", { type: "checkbox", checked: t.is_active, "aria-label": "Shown on the board" });
     const row = h("li", { className: "item" }, name, h("label", {}, active, " Shown"),
-      btn("Save", () => act(supabase.from("teachers").update({ full_name: name.value.trim(), is_active: active.checked }).eq("id", t.id))));
+      btn("Save", () => act(supabase.from("teachers").update({ full_name: name.value.trim(), is_active: active.checked }).eq("id", t.id)), "btn", ICONS.check));
     if (t.avatar_path) row.append(btn("Remove picture", async () => {
       if (await act(supabase.from("teachers").update({ avatar_path: null }).eq("id", t.id)))
         await supabase.storage.from("avatars").remove([t.avatar_path]);
-    }, "link"));
-    row.append(btn("Delete", () => { if (confirm(`Delete ${t.full_name}? This cannot be undone.`)) act(supabase.from("teachers").delete().eq("id", t.id)); }, "link"));
+    }, "link", ICONS.x));
+    row.append(btn("Delete", () => { if (confirm(`Delete ${t.full_name}? This cannot be undone.`)) act(supabase.from("teachers").delete().eq("id", t.id)); }, "link", ICONS.x));
     return row;
   }));
 }
@@ -100,8 +111,8 @@ function renderDepts() {
     const cat = h("select", {}, ...options(CATEGORIES, d.category));
     const active = h("input", { type: "checkbox", checked: d.is_active, "aria-label": "Shown on the board" });
     return h("li", { className: "item" }, name, cat, h("label", {}, active, " Shown"),
-      btn("Save", () => act(supabase.from("departments").update({ name: name.value.trim(), category: cat.value, is_active: active.checked }).eq("id", d.id))),
-      btn("Delete", () => { if (confirm(`Delete ${d.name}? This cannot be undone.`)) act(supabase.from("departments").delete().eq("id", d.id)); }, "link"));
+      btn("Save", () => act(supabase.from("departments").update({ name: name.value.trim(), category: cat.value, is_active: active.checked }).eq("id", d.id)), "btn", ICONS.check),
+      btn("Delete", () => { if (confirm(`Delete ${d.name}? This cannot be undone.`)) act(supabase.from("departments").delete().eq("id", d.id)); }, "link", ICONS.x));
   }));
 }
 
@@ -110,9 +121,13 @@ function renderLog() {
   const label = (l) => (l.entity_type === "teacher"
     ? teachers.find((t) => t.id === l.entity_id)?.full_name
     : depts.find((d) => d.id === l.entity_id)?.name) ?? "(deleted)";
-  $("log-list").replaceChildren(...(logs.length ? logs.map((l) => h("li", { className: "row",
-    textContent: `${dtFmt.format(new Date(l.changed_at))} | ${label(l)}: ${l.old_status ?? "none"} to ${l.new_status} | by ${nameOfProfile(l.changed_by)}` }))
-    : [h("li", { className: "row", textContent: "No status changes yet." })]));
+  $("log-list").replaceChildren(...(logs.length ? logs.map((l) => {
+    const li = h("li", { className: "row" });
+    const clock = h("span", { className: "icon", style: "margin-right:0.35rem;color:var(--muted)" });
+    clock.innerHTML = ICONS.clock;
+    li.append(clock, document.createTextNode(`${dtFmt.format(new Date(l.changed_at))} | ${label(l)}: ${l.old_status ?? "none"} to ${l.new_status} | by ${nameOfProfile(l.changed_by)}`));
+    return li;
+  }) : [h("li", { className: "row", textContent: "No status changes yet." })]));
 }
 
 // ---------- add forms ----------

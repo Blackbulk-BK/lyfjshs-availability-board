@@ -8,6 +8,7 @@
 // The "Status Not Updated" rule lives in the database views (teachers_board and
 // departments_board). This file only reads them, so every device shows the same result.
 import { supabase } from "./supabaseClient.js";
+import { getIcon, refreshLucide } from "./icons.js";
 
 const TZ = "Asia/Manila";
 const REFRESH_MS = 5 * 60 * 1000; // safety refresh (also covers a page left open past midnight)
@@ -59,13 +60,13 @@ function showMessage(text, withRetry = false) {
   el.retry.hidden = !withRetry;
 }
 
-// ---------- rendering (textContent only, never innerHTML) ----------
+// ---------- rendering ----------
 function avatarNode(item) {
   const wrap = document.createElement("div");
   wrap.className = "avatar";
   if (item.avatar_path) {
     const { data } = supabase.storage.from("avatars").getPublicUrl(item.avatar_path);
-    const img = new Image(40, 40);
+    const img = new Image(44, 44);
     img.loading = "lazy";
     img.alt = "";
     img.src = data.publicUrl;
@@ -80,6 +81,9 @@ function avatarNode(item) {
 function rowNode(item) {
   const li = document.createElement("li");
   li.className = "row";
+  li.dataset.status = item.display_status;
+  li.classList.add(`has-status-${item.display_status}`);
+
   if (state.tab === "teachers") li.append(avatarNode(item));
 
   const info = document.createElement("div");
@@ -87,10 +91,19 @@ function rowNode(item) {
   const name = document.createElement("span");
   name.className = "name";
   name.textContent = item.name;
+
   const meta = document.createElement("span");
   meta.className = "meta";
   const kind = state.tab === "departments" ? `${CATEGORIES[item.category] ?? "Department"} \u00b7 ` : "";
-  meta.textContent = kind + updatedText(item);
+  
+  // Clean meta with subtle clock icon
+  const clockSpan = document.createElement("span");
+  clockSpan.innerHTML = getIcon("clock", "icon-svg");
+  clockSpan.style.display = "inline-flex";
+  clockSpan.style.marginRight = "0.25rem";
+  clockSpan.setAttribute("aria-hidden", "true");
+
+  meta.append(clockSpan, document.createTextNode(kind + updatedText(item)));
   info.append(name, meta);
 
   const pill = document.createElement("span");
@@ -213,6 +226,7 @@ setActive(el.tabs, "tab", state.tab, "aria-selected");
 setActive(el.filters, "filter", state.filter, "aria-pressed");
 fetchBoard({ first: true });
 subscribeToChanges();
+refreshLucide();
 setInterval(() => fetchBoard(), REFRESH_MS);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") fetchBoard();

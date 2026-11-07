@@ -5,49 +5,93 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="css/styles.css">
 <title>Teacher login | LYFJSHS Availability Board</title>
+<script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-<header class="site"><div class="wrap">
-  <div class="logo" aria-hidden="true">LYF</div>
-  <div><h1>LYFJSHS Availability Board</h1><p class="tagline">Teacher access</p></div>
-  <nav><a href="index.html">View the board</a></nav>
-</div></header>
+<header class="site">
+  <div class="wrap">
+    <div class="logo" aria-hidden="true" title="LYFJSHS">
+      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="m4 6 8-4 8 4"></path><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"></path><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"></path><path d="M18 5v17"></path><path d="M6 5v17"></path><circle cx="12" cy="9" r="2"></circle></svg>
+    </div>
+    <div>
+      <h1>LYFJSHS Availability Board</h1>
+      <p class="tagline">Teacher &amp; Staff Access Portal</p>
+    </div>
+    <nav>
+      <a href="index.html">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Back to board
+      </a>
+    </nav>
+  </div>
+</header>
 
 <main class="wrap">
-  <p class="lead">Students do not need an account. <a href="index.html">Go to the board.</a></p>
+  <div class="notice" style="margin-top:0.5rem">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+    <span>Students do not need an account to view statuses. <a href="index.html">Go to the public board.</a></span>
+  </div>
 
   <div class="tabs" role="tablist" aria-label="Log in or create an account">
-    <button id="tab-login" type="button" role="tab" aria-selected="true">Log in</button>
-    <button id="tab-signup" type="button" role="tab" aria-selected="false">Create teacher account</button>
+    <button id="tab-login" type="button" role="tab" aria-selected="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+      Log in
+    </button>
+    <button id="tab-signup" type="button" role="tab" aria-selected="false">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+      Create teacher account
+    </button>
   </div>
 
   <p id="auth-message" class="notice" role="status" hidden></p>
 
-  <form id="login-form" class="form" style="margin-top:1rem">
-    <div class="field"><label for="login-email">Email</label>
-      <input id="login-email" type="email" autocomplete="email" required></div>
-    <div class="field"><label for="login-password">Password</label>
-      <input id="login-password" type="password" autocomplete="current-password" required></div>
-    <button type="submit" class="btn primary">Log in</button>
+  <form id="login-form" class="form" style="margin-top:1.25rem">
+    <div class="field">
+      <label for="login-email">Email address</label>
+      <input id="login-email" type="email" autocomplete="email" placeholder="you@school.edu.ph" required>
+    </div>
+    <div class="field">
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" placeholder="Enter your password" required>
+    </div>
+    <button type="submit" class="btn primary" style="width:100%;margin-top:0.5rem">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+      Log in
+    </button>
   </form>
 
-  <form id="signup-form" class="form" style="margin-top:1rem" hidden>
-    <div class="field"><label for="signup-name">Full name</label>
-      <input id="signup-name" type="text" autocomplete="name" required>
-      <p class="hint">Use your name as it appears in school records.</p></div>
-    <div class="field"><label for="signup-email">Email</label>
-      <input id="signup-email" type="email" autocomplete="email" required>
-      <p class="hint">A Gmail or school email address. You will get a confirmation email.</p></div>
-    <div class="field"><label for="signup-password">Password</label>
-      <input id="signup-password" type="password" autocomplete="new-password" minlength="8" required>
-      <p class="hint">At least 8 characters.</p></div>
-    <button type="submit" class="btn primary">Create account</button>
-    <p class="hint" style="margin-top:.75rem">An administrator must approve your account before you can update statuses.</p>
+  <form id="signup-form" class="form" style="margin-top:1.25rem" hidden>
+    <div class="field">
+      <label for="signup-name">Full name</label>
+      <input id="signup-name" type="text" autocomplete="name" placeholder="e.g. Maria Santos" required>
+      <p class="hint">Use your name as it appears in school records.</p>
+    </div>
+    <div class="field">
+      <label for="signup-email">Email address</label>
+      <input id="signup-email" type="email" autocomplete="email" placeholder="you@gmail.com" required>
+      <p class="hint">A Gmail or school email address. You will receive a verification link.</p>
+    </div>
+    <div class="field">
+      <label for="signup-password">Password</label>
+      <input id="signup-password" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required>
+      <p class="hint">Must be at least 8 characters.</p>
+    </div>
+    <button type="submit" class="btn primary" style="width:100%;margin-top:0.5rem">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+      Create account
+    </button>
+    <p class="hint" style="margin-top:1rem;text-align:center">An administrator will approve your account before you can update statuses.</p>
   </form>
 </main>
+
 <script type="module" src="js/auth.js"></script>
+<script>
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
+</script>
 </body>
 </html>

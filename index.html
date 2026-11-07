@@ -5,41 +5,96 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="css/styles.css">
 <title>LYFJSHS Availability Board</title>
 <meta name="description" content="Check whether a teacher or school department is available before you go.">
+<!-- Lucide Icons via CDN with local SVG module fallback -->
+<script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-<header class="site"><div class="wrap">
-  <div class="logo" aria-hidden="true">LYF</div>
-  <div><h1>LYFJSHS Availability Board</h1><p class="tagline">Check before you go.</p></div>
-  <nav><a href="login.html">Teacher login</a></nav>
-</div></header>
+<header class="site">
+  <div class="wrap">
+    <div class="logo" aria-hidden="true" title="LYFJSHS">
+      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="m4 6 8-4 8 4"></path><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"></path><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"></path><path d="M18 5v17"></path><path d="M6 5v17"></path><circle cx="12" cy="9" r="2"></circle></svg>
+    </div>
+    <div>
+      <h1>
+        LYFJSHS Availability Board
+        <span class="live-badge" title="Live status updates active">Live</span>
+      </h1>
+      <p class="tagline">Check teacher &amp; department status in real time before you go.</p>
+    </div>
+    <nav>
+      <a href="login.html">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+        Teacher login
+      </a>
+    </nav>
+  </div>
+</header>
 
 <main class="wrap">
   <label for="search">Search teachers or departments</label>
-  <input id="search" type="search" placeholder="Type a name" autocomplete="off">
+  <div class="search-box">
+    <span class="search-icon" aria-hidden="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+    </span>
+    <input id="search" type="search" placeholder="Type a teacher or department name..." autocomplete="off">
+  </div>
 
   <div id="tabs" role="tablist" aria-label="Choose a list">
-    <button type="button" role="tab" data-tab="teachers" aria-controls="list" aria-selected="true">Teachers</button>
-    <button type="button" role="tab" data-tab="departments" aria-controls="list" aria-selected="false">Departments</button>
+    <button type="button" role="tab" data-tab="teachers" aria-controls="list" aria-selected="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      Teachers
+    </button>
+    <button type="button" role="tab" data-tab="departments" aria-controls="list" aria-selected="false">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><path d="M9 22v-4h6v4"></path><path d="M8 6h.01"></path><path d="M16 6h.01"></path><path d="M8 10h.01"></path><path d="M16 10h.01"></path><path d="M8 14h.01"></path><path d="M16 14h.01"></path></svg>
+      Departments
+    </button>
   </div>
 
   <div id="filters" class="filters" role="group" aria-label="Filter by status">
-    <button type="button" data-filter="all" aria-pressed="true">All</button>
-    <button type="button" data-filter="available" aria-pressed="false">Available</button>
-    <button type="button" data-filter="unavailable" aria-pressed="false">Unavailable</button>
-    <button type="button" data-filter="not_updated" aria-pressed="false">Not updated</button>
+    <button type="button" data-filter="all" aria-pressed="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+      All
+    </button>
+    <button type="button" data-filter="available" aria-pressed="false">
+      <span class="filter-dot ok" aria-hidden="true"></span>
+      Available
+    </button>
+    <button type="button" data-filter="unavailable" aria-pressed="false">
+      <span class="filter-dot bad" aria-hidden="true"></span>
+      Unavailable
+    </button>
+    <button type="button" data-filter="not_updated" aria-pressed="false">
+      <span class="filter-dot idle" aria-hidden="true"></span>
+      Not updated
+    </button>
   </div>
 
   <p id="message" class="notice" role="status" hidden></p>
-  <button id="retry" type="button" class="btn" hidden>Try again</button>
+  <button id="retry" type="button" class="btn" hidden>
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+    Try again
+  </button>
+  
   <ul id="list" class="list" aria-live="polite"></ul>
   <span id="refreshed" class="refreshed"></span>
 </main>
 
-<footer class="wrap"><p>Statuses are entered by teachers and staff. Status Not Updated means nobody has updated it today.</p></footer>
+<footer>
+  <div class="wrap">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+    <p>Statuses are entered directly by teachers and school staff. <strong>Status Not Updated</strong> means nobody has set an updated status today.</p>
+  </div>
+</footer>
+
 <script type="module" src="js/board.js"></script>
+<script>
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
+</script>
 </body>
 </html>

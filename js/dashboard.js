@@ -10,6 +10,7 @@
 // Needs sql/phase4_delegates.sql (assignable_users) and migration_02 (pictures).
 import { supabase } from "./supabaseClient.js";
 import { requireLogin, signOut } from "./auth.js";
+import { ICONS, refreshLucide } from "./icons.js";
 
 const $ = (id) => document.getElementById(id);
 const LABELS = { available: "Available", unavailable: "Unavailable", not_updated: "Status Not Updated" };
@@ -65,21 +66,43 @@ async function loadItems() {
 function itemNode(it) {
   const pill = h("span"), meta = h("span", { className: "meta" });
   const msg = h("p", { className: "msg", hidden: true });
+  const li = h("li", { className: "item" });
+
   const paint = () => {
     pill.className = `pill status-${it.display_status}`;
+    li.dataset.status = it.display_status;
+    li.classList.remove("has-status-available", "has-status-unavailable", "has-status-not_updated");
+    li.classList.add(`has-status-${it.display_status}`);
     pill.replaceChildren(h("span", { className: "dot" }), LABELS[it.display_status]);
     meta.textContent = it.display_status === "not_updated"
       ? "Not updated today" : `Updated ${timeFmt.format(new Date(it.updated_at))} today`;
   };
   paint();
 
-  const buttons = ["available", "unavailable"].map((s) =>
-    h("button", { type: "button", className: "btn", textContent: LABELS[s], onclick: () => save(it, s, buttons, msg, paint) }));
+  const btnAvailable = h("button", {
+    type: "button",
+    className: "btn btn-available",
+    onclick: () => save(it, "available", [btnAvailable, btnUnavailable], msg, paint)
+  });
+  btnAvailable.innerHTML = `${ICONS.check} Mark Available`;
+
+  const btnUnavailable = h("button", {
+    type: "button",
+    className: "btn btn-unavailable",
+    onclick: () => save(it, "unavailable", [btnAvailable, btnUnavailable], msg, paint)
+  });
+  btnUnavailable.innerHTML = `${ICONS.x} Mark Unavailable`;
+
+  const buttons = [btnAvailable, btnUnavailable];
 
   const kindLabel = it.kind === "teacher" ? "Teacher" : "Department";
-  const head = h("div", { className: "info" }, h("span", { className: "name", textContent: it.name }),
-    h("span", { className: "meta", textContent: kindLabel }), meta);
-  const li = h("li", { className: "item" }, head, pill, h("div", { className: "actions" }, ...buttons), msg);
+  const head = h("div", { className: "info" },
+    h("span", { className: "name", textContent: it.name }),
+    h("span", { className: "meta", textContent: kindLabel }),
+    meta
+  );
+
+  li.replaceChildren(head, pill, h("div", { className: "actions" }, ...buttons), msg);
   if (it.owner) li.append(delegatesNode(it));
   return li;
 }
@@ -111,6 +134,8 @@ async function fetchPeople() {
 function delegatesNode(it) {
   const list = h("ul"), pick = h("select"), msg = h("p", { className: "msg", hidden: true });
   const add = h("button", { type: "button", className: "btn", textContent: "Assign" });
+  add.innerHTML = `${ICONS.plus} Assign`;
+
   const box = h("details", { className: "delegates" },
     h("summary", { textContent: "Who can update this for me?" }), list, h("div", { className: "row-form" }, pick, add), msg);
 
@@ -153,7 +178,7 @@ function paintAvatar() {
   const box = $("avatar-preview");
   if (myTeacher.avatar_path) {
     const url = supabase.storage.from("avatars").getPublicUrl(myTeacher.avatar_path).data.publicUrl;
-    box.replaceChildren(Object.assign(new Image(96, 96), { src: url, alt: "Your profile picture" }));
+    box.replaceChildren(Object.assign(new Image(104, 104), { src: url, alt: "Your profile picture" }));
   } else {
     box.textContent = myTeacher.full_name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   }
@@ -242,6 +267,7 @@ async function init() {
     $("panel").hidden = false;
     initDeptForm();
     await Promise.all([loadItems(), initAvatar()]);
+    refreshLucide();
   } catch (err) {
     console.error(err);
     say($("dash-message"), "Could not load your panel. Check your connection and refresh.", true);
