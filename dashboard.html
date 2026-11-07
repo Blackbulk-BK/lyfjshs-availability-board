@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<title>Update panel | LYFJSHS Availability Board</title>
+</head>
+<body>
+<header class="site"><div class="wrap">
+  <div class="logo" aria-hidden="true">LYF</div>
+  <div><h1>Update panel</h1><p class="tagline">Signed in as <span id="who">...</span></p></div>
+  <nav><a href="index.html">View the board</a><button id="logout" type="button" class="link">Log out</button></nav>
+</div></header>
+
+<main class="wrap">
+  <p id="dash-message" class="notice" role="status" hidden></p>
+
+  <section id="pending" class="card" hidden>
+    <h2 style="margin-top:0">Waiting for approval</h2>
+    <p>Your account is confirmed. An administrator needs to approve it before you can update statuses. Check back later.</p>
+  </section>
+
+  <div id="panel" hidden>
+    <h2 style="margin-top:0">Your statuses</h2>
+    <p class="lead">Choose Available or Unavailable. Students see the change right away.</p>
+    <ul id="items" class="stack"></ul>
+
+    <section id="avatar-section">
+      <h2>Your profile picture</h2>
+      <div class="card">
+        <div id="avatar-preview" aria-live="polite"></div>
+        <div class="field"><label for="avatar-input">Choose a picture</label>
+          <input id="avatar-input" type="file" accept="image/jpeg,image/png,image/webp">
+          <p class="hint">JPG, PNG, or WebP, up to 2 MB. Everyone who opens the board can see it.</p></div>
+        <button id="avatar-remove" type="button" class="btn" hidden>Remove picture</button>
+        <p id="avatar-message" class="msg" role="status" hidden></p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Add a department</h2>
+      <form id="dept-form" class="form">
+        <div class="field"><label for="dept-name">Department name</label>
+          <input id="dept-name" type="text" required></div>
+        <div class="field"><label for="dept-category">Type</label>
+          <select id="dept-category">
+            <option value="other">Other</option><option value="clinic">Clinic</option><option value="library">Library</option>
+            <option value="stockroom">Stockroom</option><option value="computer_lab">Computer laboratory</option>
+          </select></div>
+        <button type="submit" class="btn primary">Add department</button>
+        <p id="dept-message" class="msg" role="status" hidden></p>
+      </form>
+    </section>
+  </div>
+</main>
+<script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

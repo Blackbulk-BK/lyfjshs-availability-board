@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<title>Admin | LYFJSHS Availability Board</title>
+</head>
+<body>
+<header class="site"><div class="wrap">
+  <div class="logo" aria-hidden="true">LYF</div>
+  <div><h1>Admin</h1><p class="tagline">Signed in as <span id="admin-who">...</span></p></div>
+  <nav><a href="dashboard.html">Update panel</a><a href="index.html">View the board</a><button id="logout" type="button" class="link">Log out</button></nav>
+</div></header>
+
+<main class="wrap">
+  <p id="admin-message" class="notice" role="status" hidden></p>
+
+  <section id="denied" class="card" hidden>
+    <h2 style="margin-top:0">Admins only</h2>
+    <p>This page is for administrators. <a href="dashboard.html">Go to the update panel.</a></p>
+  </section>
+
+  <div id="admin" hidden>
+    <h2 style="margin-top:0">Accounts waiting for approval</h2>
+    <ul id="pending-list" class="stack"></ul>
+
+    <h2>Approved accounts</h2>
+    <ul id="account-list" class="stack"></ul>
+
+    <h2>Teachers</h2>
+    <form id="teacher-form" class="inline-form">
+      <label class="label" for="teacher-name" style="width:100%">Add a teacher</label>
+      <input id="teacher-name" type="text" placeholder="Full name" required>
+      <button type="submit" class="btn primary">Add teacher</button>
+    </form>
+    <ul id="teacher-list" class="stack"></ul>
+
+    <h2>Departments</h2>
+    <form id="adm-dept-form" class="inline-form">
+      <label class="label" for="adm-dept-name" style="width:100%">Add a department</label>
+      <input id="adm-dept-name" type="text" placeholder="Department name" required>
+      <select id="adm-dept-category" aria-label="Type">
+        <option value="other">Other</option><option value="clinic">Clinic</option><option value="library">Library</option>
+        <option value="stockroom">Stockroom</option><option value="computer_lab">Computer laboratory</option>
+      </select>
+      <button type="submit" class="btn primary">Add department</button>
+    </form>
+    <ul id="dept-list" class="stack"></ul>
+
+    <h2>Recent status changes</h2>
+    <ul id="log-list" class="stack"></ul>
+  </div>
+</main>
+<script type="module" src="js/admin.js"></script>
+</body>
+</html>

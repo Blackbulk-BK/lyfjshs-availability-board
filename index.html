@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<title>LYFJSHS Availability Board</title>
+<meta name="description" content="Check whether a teacher or school department is available before you go.">
+</head>
+<body>
+<header class="site"><div class="wrap">
+  <div class="logo" aria-hidden="true">LYF</div>
+  <div><h1>LYFJSHS Availability Board</h1><p class="tagline">Check before you go.</p></div>
+  <nav><a href="login.html">Teacher login</a></nav>
+</div></header>
+
+<main class="wrap">
+  <label for="search">Search teachers or departments</label>
+  <input id="search" type="search" placeholder="Type a name" autocomplete="off">
+
+  <div id="tabs" role="tablist" aria-label="Choose a list">
+    <button type="button" role="tab" data-tab="teachers" aria-controls="list" aria-selected="true">Teachers</button>
+    <button type="button" role="tab" data-tab="departments" aria-controls="list" aria-selected="false">Departments</button>
+  </div>
+
+  <div id="filters" class="filters" role="group" aria-label="Filter by status">
+    <button type="button" data-filter="all" aria-pressed="true">All</button>
+    <button type="button" data-filter="available" aria-pressed="false">Available</button>
+    <button type="button" data-filter="unavailable" aria-pressed="false">Unavailable</button>
+    <button type="button" data-filter="not_updated" aria-pressed="false">Not updated</button>
+  </div>
+
+  <p id="message" class="notice" role="status" hidden></p>
+  <button id="retry" type="button" class="btn" hidden>Try again</button>
+  <ul id="list" class="list" aria-live="polite"></ul>
+  <span id="refreshed" class="refreshed"></span>
+</main>
+
+<footer class="wrap"><p>Statuses are entered by teachers and staff. Status Not Updated means nobody has updated it today.</p></footer>
+<script type="module" src="js/board.js"></script>
+</body>
+</html>

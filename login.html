@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<title>Teacher login | LYFJSHS Availability Board</title>
+</head>
+<body>
+<header class="site"><div class="wrap">
+  <div class="logo" aria-hidden="true">LYF</div>
+  <div><h1>LYFJSHS Availability Board</h1><p class="tagline">Teacher access</p></div>
+  <nav><a href="index.html">View the board</a></nav>
+</div></header>
+
+<main class="wrap">
+  <p class="lead">Students do not need an account. <a href="index.html">Go to the board.</a></p>
+
+  <div class="tabs" role="tablist" aria-label="Log in or create an account">
+    <button id="tab-login" type="button" role="tab" aria-selected="true">Log in</button>
+    <button id="tab-signup" type="button" role="tab" aria-selected="false">Create teacher account</button>
+  </div>
+
+  <p id="auth-message" class="notice" role="status" hidden></p>
+
+  <form id="login-form" class="form" style="margin-top:1rem">
+    <div class="field"><label for="login-email">Email</label>
+      <input id="login-email" type="email" autocomplete="email" required></div>
+    <div class="field"><label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required></div>
+    <button type="submit" class="btn primary">Log in</button>
+  </form>
+
+  <form id="signup-form" class="form" style="margin-top:1rem" hidden>
+    <div class="field"><label for="signup-name">Full name</label>
+      <input id="signup-name" type="text" autocomplete="name" required>
+      <p class="hint">Use your name as it appears in school records.</p></div>
+    <div class="field"><label for="signup-email">Email</label>
+      <input id="signup-email" type="email" autocomplete="email" required>
+      <p class="hint">A Gmail or school email address. You will get a confirmation email.</p></div>
+    <div class="field"><label for="signup-password">Password</label>
+      <input id="signup-password" type="password" autocomplete="new-password" minlength="8" required>
+      <p class="hint">At least 8 characters.</p></div>
+    <button type="submit" class="btn primary">Create account</button>
+    <p class="hint" style="margin-top:.75rem">An administrator must approve your account before you can update statuses.</p>
+  </form>
+</main>
+<script type="module" src="js/auth.js"></script>
+</body>
+</html>
