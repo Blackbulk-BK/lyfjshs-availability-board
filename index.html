@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<title>LYFJSHS Availability Board - Centralized Availability</title>
+<meta name="description" content="Centralized real-time availability monitoring for teachers and school departments of Luis Y. Ferrer Jr. Senior High School.">
+<!-- Lucide Icons via CDN with local SVG module fallback -->
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <div class="site-brand">
+      <div class="logo" aria-hidden="true" title="LYFJSHS">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+      </div>
+      <div>
+        <h1>
+          LYFJSHS Availability
+          <span class="live-badge" title="Live status updates active">Live Sync</span>
+        </h1>
+        <p class="tagline">Luis Y. Ferrer Jr. Senior High School &bull; Real-Time Availability &amp; Status Portal</p>
+      </div>
+    </div>
+    <nav>
+      <a href="login.html">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+        Faculty access
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- Centralized System Sync & Latest Update Timestamp Banner -->
+  <section class="sync-banner" aria-label="System status & sync information">
+    <div class="sync-item">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+      <span>Latest Update Recorded: <strong id="latest-update-time">Checking records...</strong></span>
+    </div>
+    <div class="sync-item">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect><line x1="16" x2="16" y1="2" y2="6"></line><line x1="8" x2="8" y1="2" y2="6"></line><line x1="3" x2="21" y1="10" y2="10"></line></svg>
+      <span>System Synced: <strong id="system-sync">Connecting...</strong></span>
+    </div>
+  </section>
+
+  <!-- Quick Availability Summary Stats -->
+  <section class="board-summary" id="board-summary" aria-label="Summary overview of availability">
+    <div class="stat-chip" data-stat-filter="available" role="button" tabindex="0" title="Click to filter by Available">
+      <span class="filter-dot ok" aria-hidden="true"></span>
+      <div class="stat-details">
+        <span class="stat-count" id="count-available">0</span>
+        <span class="stat-label">Available</span>
+      </div>
+    </div>
+    <div class="stat-chip" data-stat-filter="unavailable" role="button" tabindex="0" title="Click to filter by Unavailable">
+      <span class="filter-dot bad" aria-hidden="true"></span>
+      <div class="stat-details">
+        <span class="stat-count" id="count-unavailable">0</span>
+        <span class="stat-label">Unavailable</span>
+      </div>
+    </div>
+    <div class="stat-chip" data-stat-filter="under_maintenance" role="button" tabindex="0" title="Click to filter by Under Maintenance">
+      <span class="filter-dot warn" aria-hidden="true"></span>
+      <div class="stat-details">
+        <span class="stat-count" id="count-maintenance">0</span>
+        <span class="stat-label">Maintenance</span>
+      </div>
+    </div>
+    <div class="stat-chip" data-stat-filter="not_updated" role="button" tabindex="0" title="Click to filter by Status Not Updated">
+      <span class="filter-dot idle" aria-hidden="true"></span>
+      <div class="stat-details">
+        <span class="stat-count" id="count-not-updated">0</span>
+        <span class="stat-label">Not Updated</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Centralized Search Across Teachers and School Departments -->
+  <label for="search">Search teachers or school departments</label>
+  <div class="search-box">
+    <span class="search-icon" aria-hidden="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+    </span>
+    <input id="search" type="search" placeholder="Search teacher, department, clinic, lab, building, or room..." autocomplete="off">
+  </div>
+
+  <!-- Centralized View Tabs: All, Teachers, Departments -->
+  <div id="tabs" role="tablist" aria-label="Choose availability view">
+    <button type="button" role="tab" data-tab="all" aria-controls="list" aria-selected="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+      All (Centralized)
+    </button>
+    <button type="button" role="tab" data-tab="teachers" aria-controls="list" aria-selected="false">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      Teachers
+    </button>
+    <button type="button" role="tab" data-tab="departments" aria-controls="list" aria-selected="false">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><path d="M9 22v-4h6v4"></path><path d="M8 6h.01"></path><path d="M16 6h.01"></path><path d="M8 10h.01"></path><path d="M16 10h.01"></path><path d="M8 14h.01"></path><path d="M16 14h.01"></path></svg>
+      Departments &amp; Facilities
+    </button>
+  </div>
+
+  <!-- Status Filter Controls with Under Maintenance Option -->
+  <div id="filters" class="filters" role="group" aria-label="Filter by availability status">
+    <button type="button" data-filter="all" aria-pressed="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+      All Statuses
+    </button>
+    <button type="button" data-filter="available" aria-pressed="false">
+      <span class="filter-dot ok" aria-hidden="true"></span>
+      Available
+    </button>
+    <button type="button" data-filter="unavailable" aria-pressed="false">
+      <span class="filter-dot bad" aria-hidden="true"></span>
+      Unavailable
+    </button>
+    <button type="button" data-filter="under_maintenance" aria-pressed="false">
+      <span class="filter-dot warn" aria-hidden="true"></span>
+      Under Maintenance
+    </button>
+    <button type="button" data-filter="not_updated" aria-pressed="false">
+      <span class="filter-dot idle" aria-hidden="true"></span>
+      Status Not Updated
+    </button>
+  </div>
+
+  <p id="message" class="notice" role="status" hidden></p>
+  <button id="retry" type="button" class="btn" hidden>
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+    Try again
+  </button>
+  
+  <ul id="list" class="list" aria-live="polite"></ul>
+  <span id="refreshed" class="refreshed"></span>
+</main>
+
+<footer>
+  <div class="wrap" style="flex-direction:column;gap:0.75rem">
+    <div style="display:flex;align-items:flex-start;gap:0.65rem">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+      <p>Statuses are recorded directly by authorized faculty and staff. <strong>Status Not Updated</strong> indicates availability has not yet been confirmed today.</p>
+    </div>
+    <div style="font-size:0.82rem;color:var(--muted)">
+      Luis Y. Ferrer Jr. Senior High School &bull; Practical Research Availability Monitoring System
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="js/board.js"></script>
+<script>
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<title>Teacher login | LYFJSHS Availability Board</title>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <div class="site-brand">
+      <div class="logo" aria-hidden="true" title="LYFJSHS">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+      </div>
+      <div>
+        <h1>
+          LYFJSHS Availability
+          <span class="live-badge" title="Live status updates active">Live Sync</span>
+        </h1>
+        <p class="tagline">Faculty Access &bull; Luis Y. Ferrer Jr. Senior High School</p>
+      </div>
+    </div>
+    <nav><a href="index.html">View Board</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="lead">Students do not need an account. <a href="index.html">Go to the board.</a></p>
+
+  <div class="tabs" role="tablist" aria-label="Log in or create an account">
+    <button id="tab-login" type="button" role="tab" aria-selected="true">Log in</button>
+    <button id="tab-signup" type="button" role="tab" aria-selected="false">Create teacher account</button>
+  </div>
+
+  <p id="auth-message" class="notice" role="status" hidden></p>
+
+  <form id="login-form" class="form" style="margin-top:1rem">
+    <div class="field"><label for="login-email">Email</label>
+      <input id="login-email" type="email" autocomplete="email" required></div>
+    <div class="field"><label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required></div>
+    <button type="submit" class="btn primary">Log in</button>
+  </form>
+
+  <form id="signup-form" class="form" style="margin-top:1rem" hidden>
+    <div class="field"><label for="signup-name">Full name</label>
+      <input id="signup-name" type="text" autocomplete="name" required></div>
+    <div class="field"><label for="signup-email">Email</label>
+      <input id="signup-email" type="email" autocomplete="email" required>
+      <p class="hint">A Gmail or school email address. You will get a confirmation email.</p></div>
+    <div class="field"><label for="signup-password">Password</label>
+      <input id="signup-password" type="password" autocomplete="new-password" minlength="8" required>
+      <p class="hint">At least 8 characters.</p></div>
+    <div class="field"><label for="signup-rank">Rank</label>
+      <select id="signup-rank" required></select></div>
+    <div class="field"><span class="label">Departments you handle</span>
+      <p class="hint">Tick every department you handle. Leave all unticked if you handle none.</p>
+      <div id="signup-departments"></div></div>
+    <div class="field"><label for="signup-description">About you (optional)</label>
+      <textarea id="signup-description" maxlength="500" placeholder="For example: subjects you teach, or where students can find you."></textarea>
+      <p class="hint">Up to 500 characters. You can change it later.</p></div>
+    <button type="submit" class="btn primary">Create account</button>
+    <p class="hint" style="margin-top:.75rem">You can add your photo after you log in for the first time.</p>
+  </form>
+</main>
+<script type="module" src="js/auth.js"></script>
+</body>
+</html>

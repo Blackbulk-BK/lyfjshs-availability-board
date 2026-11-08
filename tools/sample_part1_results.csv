@@ -1,0 +1,10 @@
+﻿Question,Answer,Frequency,Percent
+grade_level,Grade 12,8,53.3
+grade_level,Grade 11,7,46.7
+check_frequency,Daily,8,53.3
+check_frequency,Weekly,6,40.0
+check_frequency,Monthly,1,6.7
+verify_methods,Visit the teacher's office or department personally,8,40.0
+verify_methods,Ask another student or teacher,6,30.0
+verify_methods,Ask the teacher or school personnel directly,4,20.0
+verify_methods,Check announcements or online information,2,10.0

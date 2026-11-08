@@ -1,0 +1,15 @@
+# secrets
+.env
+tools/.env
+# python
+__pycache__/
+*.pyc
+.venv/
+# data files that may contain personal or survey data
+*.csv
+!tools/sample_*.csv
+# editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+!docs/test_*.csv
