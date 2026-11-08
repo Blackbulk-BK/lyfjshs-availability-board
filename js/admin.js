@@ -130,7 +130,59 @@ function renderLog() {
   }) : [h("li", { className: "row", textContent: "No status changes yet." })]));
 }
 
-// ---------- add forms ----------
+// ---------- add forms & export ----------
+function downloadCsvFile(filename, content) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function wireExportButtons() {
+  const btnLogs = $("admin-export-logs");
+  const msg = $("admin-export-msg");
+
+  if (btnLogs) {
+    btnLogs.addEventListener("click", async () => {
+      msg.textContent = "Fetching system audit trail logs...";
+      try {
+        const { data, error } = await supabase
+          .from("status_log")
+          .select("*")
+          .order("changed_at", { ascending: false });
+
+        if (error) throw error;
+        const rows = data ?? [];
+        if (!rows.length) {
+          msg.textContent = "No status logs recorded yet.";
+          return;
+        }
+
+        const lines = ["timestamp_pht,entity_type,entity_name,old_status,new_status,changed_by"];
+        rows.forEach((l) => {
+          const entityName = (l.entity_type === "teacher"
+            ? teachers.find((t) => t.id === l.entity_id)?.full_name
+            : depts.find((d) => d.id === l.entity_id)?.name) ?? l.entity_id;
+          const author = nameOfProfile(l.changed_by);
+          const dt = dtFmt.format(new Date(l.changed_at));
+          lines.push(`"${dt}","${l.entity_type}","${entityName}","${l.old_status ?? 'none'}","${l.new_status}","${author}"`);
+        });
+
+        downloadCsvFile("sop3_system_audit_log.csv", lines.join("\n"));
+        msg.textContent = `Downloaded ${rows.length} system audit log record(s).`;
+      } catch (err) {
+        console.error(err);
+        msg.textContent = "Could not fetch audit logs. Check your connection.";
+      }
+    });
+  }
+}
+
 function wireForms() {
   $("teacher-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -156,6 +208,7 @@ async function init() {
     $("admin").hidden = false;
     $("admin-who").textContent = me.full_name;
     wireForms();
+    wireExportButtons();
     await loadAll();
   } catch (err) { console.error(err); say("Could not open the admin page. Refresh and try again.", true); }
 }

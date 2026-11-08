@@ -10,10 +10,25 @@ import { supabase } from "./supabaseClient.js";
 import { requireLogin, signOut, fillRankSelect, fetchDepartments, renderDepartmentChecks, checkedIds } from "./auth.js";
 
 const $ = (id) => document.getElementById(id);
-const LABELS = { available: "Available", unavailable: "Unavailable", not_updated: "Status Not Updated" };
+const LABELS = {
+  available: "Available",
+  unavailable: "Unavailable",
+  under_maintenance: "Under Maintenance",
+  not_updated: "Status Not Updated",
+};
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
-const timeFmt = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" });
+const TZ = "Asia/Manila";
+const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ });
+const timeFmt = new Intl.DateTimeFormat("en-PH", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
+const fullDateTimeFmt = new Intl.DateTimeFormat("en-PH", {
+  timeZone: TZ,
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 const h = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };
 const say = (node, text, bad = false) => { node.textContent = text; node.dataset.state = bad ? "error" : "ok"; node.hidden = !text; };
@@ -72,16 +87,37 @@ function itemNode(it) {
   const msg = h("p", { className: "msg", hidden: true });
   const paint = () => {
     pill.className = `pill status-${it.display_status}`;
-    pill.replaceChildren(h("span", { className: "dot" }), LABELS[it.display_status]);
-    meta.textContent = it.display_status === "not_updated"
-      ? "Not updated today" : `Updated ${timeFmt.format(new Date(it.updated_at))} today`;
+    pill.replaceChildren(h("span", { className: "dot" }), LABELS[it.display_status] ?? it.display_status);
+    if (!it.updated_at || it.display_status === "not_updated") {
+      meta.textContent = it.updated_at
+        ? `Status Not Updated (Last: ${fullDateTimeFmt.format(new Date(it.updated_at))})`
+        : "Status Not Updated (No recorded update)";
+    } else {
+      const d = new Date(it.updated_at);
+      const isToday = dayFmt.format(d) === dayFmt.format(new Date());
+      meta.textContent = isToday
+        ? `Updated today at ${timeFmt.format(d)}`
+        : `Last update: ${fullDateTimeFmt.format(d)}`;
+    }
   };
   paint();
 
-  const buttons = ["available", "unavailable"].map((s) =>
-    h("button", { type: "button", className: `btn btn-${s}`, textContent: LABELS[s], onclick: () => save(it, s, buttons, msg, paint) }));
+  const statusOptions = it.kind === "department"
+    ? ["available", "unavailable", "under_maintenance"]
+    : ["available", "unavailable"];
 
-  const kindLabel = it.kind === "teacher" ? "Your status" : (it.building ? `${it.building}, ${it.floor_level ?? ""}`.replace(/, $/, "") : "Department");
+  const buttons = statusOptions.map((s) =>
+    h("button", {
+      type: "button",
+      className: `btn btn-${s}`,
+      textContent: LABELS[s] ?? s,
+      onclick: () => save(it, s, buttons, msg, paint),
+    })
+  );
+
+  const kindLabel = it.kind === "teacher"
+    ? "Teacher Status"
+    : (it.building ? `${it.building}${it.floor_level ? ", " + it.floor_level : ""}` : "Department");
   const head = h("div", { className: "info" }, h("span", { className: "name", textContent: it.name }),
     h("span", { className: "meta", textContent: kindLabel }), meta);
   const li = h("li", { className: "item" }, head, pill, h("div", { className: "actions" }, ...buttons), msg);
@@ -104,7 +140,7 @@ async function save(it, status, buttons, msg, paint) {
   it.display_status = data[0].status;
   it.updated_at = data[0].updated_at;
   paint();
-  say(msg, `Saved at ${timeFmt.format(new Date(data[0].updated_at))}`);
+  say(msg, `Saved at ${fullDateTimeFmt.format(new Date(data[0].updated_at))}`);
 }
 
 // ---------- opening and closing time (departments the teacher handles) ----------
@@ -130,50 +166,191 @@ function hoursNode(it) {
     h("label", { htmlFor: close.id, textContent: "Closes" }), close, saveBtn, msg);
 }
 
+// ---------- helpers ----------
+function initials(name) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] ?? "?";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase();
+}
+
+function renderPersonAvatar(avatarPath, name, size = 36) {
+  const wrap = h("div", { className: "delegate-avatar", style: `width:${size}px;height:${size}px;` });
+  if (avatarPath) {
+    const { data } = supabase.storage.from("avatars").getPublicUrl(avatarPath);
+    const img = new Image(size, size);
+    img.loading = "lazy";
+    img.alt = "";
+    img.src = data.publicUrl;
+    img.onerror = () => {
+      img.remove();
+      wrap.textContent = initials(name);
+    };
+    wrap.append(img);
+  } else {
+    wrap.textContent = initials(name);
+  }
+  return wrap;
+}
+
 // ---------- delegates ----------
 async function fetchPeople() {
-  const { data, error } = await supabase.rpc("assignable_users");
-  if (error) throw error;
-  return new Map(data.map((p) => [p.id, p.full_name]));
+  // Query teachers table to get profile_id, full_name, avatar_path, rank_level
+  try {
+    const { data, error } = await supabase
+      .from("teachers")
+      .select("profile_id, full_name, avatar_path, rank_level")
+      .not("profile_id", "is", null)
+      .eq("is_active", true)
+      .order("full_name");
+    if (!error && Array.isArray(data) && data.length) {
+      return new Map(data.map((p) => [p.profile_id, {
+        id: p.profile_id,
+        full_name: p.full_name,
+        avatar_path: p.avatar_path,
+        rank_level: p.rank_level
+      }]));
+    }
+  } catch (err) {
+    console.warn("Teachers query notice:", err);
+  }
+
+  // Fallback: Query profiles table
+  try {
+    const { data, error } = await supabase.from("profiles").select("id, full_name").order("full_name");
+    if (!error && Array.isArray(data) && data.length) {
+      return new Map(data.map((p) => [p.id, {
+        id: p.id,
+        full_name: p.full_name,
+        avatar_path: null,
+        rank_level: null
+      }]));
+    }
+  } catch (err) {
+    console.warn("Profiles query notice:", err);
+  }
+
+  return new Map();
 }
 
 function delegatesNode(it) {
-  const list = h("ul"), pick = h("select"), msg = h("p", { className: "msg", hidden: true });
-  const add = h("button", { type: "button", className: "btn", textContent: "Assign" });
-  const box = h("details", { className: "delegates" },
-    h("summary", { textContent: "Let someone else update this for me" }), list, h("div", { className: "row-form" }, pick, add), msg);
+  const box = h("details", { className: "delegates" });
+  const summary = h("summary", {},
+    h("span", { style: "display:inline-flex;align-items:center;gap:0.4rem;" },
+      h("span", { innerHTML: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>` }),
+      "Co-Coordinators & Delegation (Let someone else update this for me)"
+    )
+  );
+
+  const panel = h("div", { className: "delegates-panel" });
+  const activeTitle = h("div", { style: "font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--slate);margin-bottom:0.4rem;", textContent: "Active Co-Coordinators" });
+  const assignedList = h("ul", { className: "delegates-list" });
+
+  const addTitle = h("div", { style: "font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--slate);margin:0.85rem 0 0.4rem;", textContent: "Assign Other Faculty" });
+  const searchInput = h("input", { type: "search", placeholder: "Search verified teachers by name...", style: "margin-bottom:0.6rem;font-size:0.84rem;height:38px;" });
+  const availableList = h("ul", { className: "delegates-list" });
+  const msg = h("p", { className: "msg", hidden: true });
+
+  panel.append(activeTitle, assignedList, addTitle, searchInput, availableList, msg);
+  box.append(summary, panel);
+
+  let cachedAvailable = [];
+
+  function renderAvailable(filterText = "") {
+    const q = filterText.trim().toLowerCase();
+    const filtered = cachedAvailable.filter((p) => !q || p.full_name.toLowerCase().includes(q));
+
+    if (!filtered.length) {
+      availableList.replaceChildren(h("li", { style: "color:var(--muted);font-size:0.82rem;padding:0.4rem;", textContent: q ? "No teachers match search." : "No other verified teachers found." }));
+      return;
+    }
+
+    availableList.replaceChildren(...filtered.map((person) => {
+      const avatar = renderPersonAvatar(person.avatar_path, person.full_name, 36);
+      const name = h("span", { className: "delegate-name", textContent: person.full_name });
+      const rank = h("span", { className: "delegate-rank", textContent: person.rank_level || "Faculty Member" });
+      const personInfo = h("div", { className: "delegate-info" }, name, rank);
+      const personBlock = h("div", { className: "delegate-person" }, avatar, personInfo);
+
+      const assignBtn = h("button", {
+        type: "button",
+        className: "btn primary",
+        style: "padding:0.35rem 0.85rem;font-size:0.8rem;",
+        textContent: "Assign",
+        onclick: async () => {
+          assignBtn.disabled = true;
+          say(msg, "Assigning...");
+          const { error } = await supabase.from("status_managers").insert({
+            entity_type: it.kind, entity_id: it.id, user_id: person.id, assigned_by: profile.id
+          });
+          assignBtn.disabled = false;
+          if (error) {
+            say(msg, error.code === "23505" ? "Already assigned." : "Could not assign.", true);
+          } else {
+            say(msg, "");
+            refresh();
+          }
+        }
+      });
+
+      return h("li", { className: "delegate-item" }, personBlock, assignBtn);
+    }));
+  }
+
+  searchInput.addEventListener("input", () => renderAvailable(searchInput.value));
 
   async function refresh() {
     try {
-      people ??= await fetchPeople();
+      people = await fetchPeople();
       const { data, error } = await supabase.from("status_managers").select("id, user_id")
         .eq("entity_type", it.kind).eq("entity_id", it.id);
-      if (error) throw error;
-      const taken = new Set(data.map((d) => d.user_id));
-      list.replaceChildren(...data.map((d) => h("li", {}, people.get(d.user_id) ?? "Unknown account",
-        h("button", {
-          type: "button", className: "link", textContent: "Remove",
-          onclick: async () => {
-            const r = await supabase.from("status_managers").delete().eq("id", d.id);
-            r.error ? say(msg, "Could not remove.", true) : refresh();
-          },
-        }))));
-      pick.replaceChildren(h("option", { value: "", textContent: "Choose a person" }),
-        ...[...people].filter(([id]) => id !== profile.id && !taken.has(id))
-          .map(([id, name]) => h("option", { value: id, textContent: name })));
-    } catch (err) { console.error(err); say(msg, "Could not load delegates.", true); }
+      if (error) console.warn("status_managers notice:", error);
+
+      const managers = data ?? [];
+      const taken = new Set(managers.map((d) => d.user_id));
+
+      if (!managers.length) {
+        assignedList.replaceChildren(h("li", { style: "color:var(--muted);font-size:0.82rem;padding:0.3rem 0;", textContent: "None currently assigned (you are the primary coordinator)." }));
+      } else {
+        assignedList.replaceChildren(...managers.map((d) => {
+          const person = people.get(d.user_id) || { full_name: "Assigned Faculty", avatar_path: null, rank_level: null };
+          const avatar = renderPersonAvatar(person.avatar_path, person.full_name, 36);
+          const name = h("span", { className: "delegate-name", textContent: person.full_name });
+          const rank = h("span", { className: "delegate-rank", textContent: person.rank_level || "Co-Coordinator" });
+          const personInfo = h("div", { className: "delegate-info" }, name, rank);
+          const personBlock = h("div", { className: "delegate-person" }, avatar, personInfo);
+
+          const removeBtn = h("button", {
+            type: "button",
+            className: "btn",
+            style: "padding:0.3rem 0.65rem;font-size:0.78rem;color:#f87171;",
+            textContent: "Remove",
+            onclick: async () => {
+              removeBtn.disabled = true;
+              const r = await supabase.from("status_managers").delete().eq("id", d.id);
+              if (r.error) {
+                say(msg, "Could not remove delegate.", true);
+                removeBtn.disabled = false;
+              } else {
+                refresh();
+              }
+            }
+          });
+
+          return h("li", { className: "delegate-item" }, personBlock, removeBtn);
+        }));
+      }
+
+      cachedAvailable = [...people.values()].filter((p) => p.id !== profile.id && !taken.has(p.id));
+      renderAvailable(searchInput.value);
+    } catch (err) {
+      console.error(err);
+      say(msg, "Could not load delegates.", true);
+    }
   }
 
   box.addEventListener("toggle", () => { if (box.open) refresh(); });
-  add.addEventListener("click", async () => {
-    if (!pick.value) return;
-    add.disabled = true;
-    const { error } = await supabase.from("status_managers").insert({
-      entity_type: it.kind, entity_id: it.id, user_id: pick.value, assigned_by: profile.id });
-    add.disabled = false;
-    if (error) return say(msg, error.code === "23505" ? "Already assigned." : "Could not assign.", true);
-    say(msg, ""); refresh();
-  });
   return box;
 }
 

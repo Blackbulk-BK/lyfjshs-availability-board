@@ -1,0 +1,20 @@
+﻿No.,Statement,Mean,SD,Interpretation,Indicator
+1,The website displays teacher availability statuses correctly. (Tama ang pagpapakita ng website ng availability status ng mga guro.),3.87,0.35,Very High,3.1 Functional Suitability
+2,The website displays department availability statuses correctly. (Tama ang pagpapakita ng website ng availability status ng mga kagawaran.),3.87,0.35,Very High,3.1 Functional Suitability
+3,The website provides the necessary information for checking teacher and department availability. (Ibinibigay ng website ang kinakailangang impormasyon upang malaman ang availability ng mga guro at kagawaran.),3.87,0.35,Very High,3.1 Functional Suitability
+4,Authorized personnel can update teacher and department statuses successfully. (Matagumpay na naa-update ng mga awtorisadong kawani ang status ng mga guro at kagawaran.),3.93,0.26,Very High,3.1 Functional Suitability
+5,The website displays the latest recorded availability updates correctly. (Tama ang pagpapakita ng website ng pinakabagong naitalang mga update sa availability.),3.93,0.26,Very High,3.1 Functional Suitability
+,INDICATOR MEAN: 3.1 Functional Suitability,3.89,0.1,Very High,3.1 Functional Suitability
+6,The website works consistently when viewing teacher availability information. (Pare-parehong gumagana nang maayos ang website kapag tinitingnan ang impormasyon tungkol sa availability ng mga guro.),3.93,0.26,Very High,3.2 Reliability
+7,The website works consistently when viewing department availability information. (Pare-parehong gumagana nang maayos ang website kapag tinitingnan ang impormasyon tungkol sa availability ng mga kagawaran.),3.93,0.26,Very High,3.2 Reliability
+8,The website saves availability updates successfully. (Matagumpay na nase-save ng website ang mga update sa availability.),3.93,0.26,Very High,3.2 Reliability
+9,The website displays recorded information without unexpected errors. (Ipinapakita ng website ang naitalang impormasyon nang walang hindi inaasahang error.),3.87,0.35,Very High,3.2 Reliability
+10,The website provides consistent results when users access the same availability information under the same conditions. (Nagbibigay ang website ng pare-parehong resulta kapag ina-access ng mga gumagamit ang parehong impormasyon sa ilalim ng parehong mga kondisyon.),3.93,0.26,Very High,3.2 Reliability
+,INDICATOR MEAN: 3.2 Reliability,3.92,0.1,Very High,3.2 Reliability
+11,The website loads the main availability page within an acceptable amount of time. (Nilo-load ng website ang pangunahing pahina ng availability sa loob ng katanggap-tanggap na oras.),3.93,0.26,Very High,3.3 Response Time (User Assessment)
+12,The website displays teacher availability information promptly. (Mabilis na ipinapakita ng website ang impormasyon tungkol sa availability ng mga guro.),3.93,0.26,Very High,3.3 Response Time (User Assessment)
+13,The website displays department availability information promptly. (Mabilis na ipinapakita ng website ang impormasyon tungkol sa availability ng mga kagawaran.),3.93,0.26,Very High,3.3 Response Time (User Assessment)
+14,The website responds promptly when searching for a teacher or department. (Mabilis tumugon ang website kapag naghahanap ng guro o kagawaran.),3.93,0.26,Very High,3.3 Response Time (User Assessment)
+15,The website displays the latest saved status promptly after an authorized user updates the information. (Mabilis na ipinapakita ng website ang pinakabagong na-save na status pagkatapos mag-update ng impormasyon ang isang awtorisadong gumagamit.),3.93,0.26,Very High,3.3 Response Time (User Assessment)
+,INDICATOR MEAN: 3.3 Response Time (User Assessment),3.93,0.1,Very High,3.3 Response Time (User Assessment)
+,OVERALL WEIGHTED MEAN,3.92,0.08,Very High,

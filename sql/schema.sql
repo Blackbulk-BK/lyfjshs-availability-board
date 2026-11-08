@@ -5,7 +5,7 @@
 
 -- ---------- Types ----------
 create type public.user_role as enum ('admin', 'teacher');
-create type public.availability_status as enum ('available', 'unavailable');
+create type public.availability_status as enum ('available', 'unavailable', 'under_maintenance');
 create type public.entity_kind as enum ('teacher', 'department');
 
 -- ---------- Tables ----------
@@ -166,10 +166,14 @@ create view public.departments_board with (security_invoker = true) as
 select d.id,
        d.name,
        d.category,
-       case when d.status is null or d.updated_at is null
+       case
+         when d.status::text = 'under_maintenance' then 'under_maintenance'
+         when d.status is null or d.updated_at is null
               or (d.updated_at at time zone public.school_tz())::date
                  <> (now() at time zone public.school_tz())::date
-            then 'not_updated' else d.status::text end as display_status,
+         then 'not_updated'
+         else d.status::text
+       end as display_status,
        d.updated_at
 from public.departments d
 where d.is_active;
