@@ -78,36 +78,79 @@ export function fillRankSelect(select, selected = "") {
 export async function fetchDepartments() {
   const { data, error } = await supabase
     .from("departments_board")
-    .select("id, name, category")
+    .select("id, name, category, building, floor_level")
     .order("name");
   if (error) throw error;
   return data;
 }
 
-export function renderDepartmentChecks(container, depts, selected = new Set()) {
+export function renderDepartmentChecks(container, items, selected = new Set()) {
   if (!container) return;
-  const grid = Object.assign(document.createElement("div"), { className: "dept-pill-grid" });
 
-  depts.forEach((d) => {
+  const depts = items.filter((d) => d.category !== "facility");
+  const facilities = items.filter((d) => d.category === "facility");
+  const radioGroupName = `dept-radio-${container.id || "group"}`;
+
+  const makePill = (type, name, value, labelText, isChecked) => {
     const lab = Object.assign(document.createElement("label"), { className: "dept-pill-option" });
-    const cb = Object.assign(document.createElement("input"), {
-      type: "checkbox",
-      value: d.id,
-      checked: selected.has(d.id),
+    const input = Object.assign(document.createElement("input"), {
+      type,
+      value,
+      checked: isChecked,
     });
+    if (name) input.name = name;
     const badge = Object.assign(document.createElement("span"), {
       className: "dept-pill-label",
-      textContent: d.name,
+      textContent: labelText,
     });
-    lab.append(cb, badge);
-    grid.append(lab);
-  });
+    lab.append(input, badge);
+    return lab;
+  };
 
-  container.replaceChildren(grid);
+  const parts = [];
+
+  if (depts.length) {
+    const section = Object.assign(document.createElement("div"), { className: "dept-select-group" });
+    const heading = Object.assign(document.createElement("p"), {
+      className: "dept-group-title",
+      textContent: "Assigned Department (Choose One)",
+    });
+    const grid = Object.assign(document.createElement("div"), { className: "dept-pill-grid" });
+
+    const hasSelectedDept = depts.some((d) => selected.has(d.id));
+    grid.append(makePill("radio", radioGroupName, "", "None", !hasSelectedDept));
+
+    depts.forEach((d) => {
+      grid.append(makePill("radio", radioGroupName, d.id, d.name, selected.has(d.id)));
+    });
+
+    section.append(heading, grid);
+    parts.push(section);
+  }
+
+  if (facilities.length) {
+    const section = Object.assign(document.createElement("div"), { className: "dept-select-group" });
+    const heading = Object.assign(document.createElement("p"), {
+      className: "dept-group-title",
+      textContent: "Facilities / Rooms You Handle (Optional — Multiple Allowed)",
+    });
+    const grid = Object.assign(document.createElement("div"), { className: "dept-pill-grid" });
+
+    facilities.forEach((f) => {
+      grid.append(makePill("checkbox", "", f.id, f.name, selected.has(f.id)));
+    });
+
+    section.append(heading, grid);
+    parts.push(section);
+  }
+
+  container.replaceChildren(...parts);
 }
 
 export const checkedIds = (container) =>
-  container ? [...container.querySelectorAll("input:checked")].map((i) => i.value) : [];
+  container
+    ? [...container.querySelectorAll("input:checked")].map((i) => i.value).filter(Boolean)
+    : [];
 
 // ---------- login page ----------
 function initLoginPage() {
@@ -135,7 +178,7 @@ function initLoginPage() {
     .then((d) => renderDepartmentChecks($("signup-departments"), d))
     .catch((err) => {
       console.error(err);
-      $("signup-departments").textContent = "Could not load departments. You can choose them later in your profile.";
+      $("signup-departments").textContent = "Could not load departments and facilities. You can choose them later in your Teacher Panel.";
     });
 
   getSession().then((s) => { if (s) location.replace("dashboard.html"); });
@@ -183,7 +226,7 @@ function initLoginPage() {
       });
       if (error) throw error;
       signupForm.reset();
-      say("Account created. Check your email to confirm it, then log in. You can add your photo after you log in.");
+      say("Teacher account created. Check your email to confirm it, then log in.");
     });
   });
 }

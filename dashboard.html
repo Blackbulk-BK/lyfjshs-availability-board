@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap">
 <link rel="stylesheet" href="css/styles.css">
-<title>Faculty Panel | LYFJSHS Availability Board</title>
+<title>Teacher Panel | LYFJSHS Availability Board</title>
 <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
@@ -22,7 +22,7 @@
           LYFJSHS Availability
           <span class="live-badge" title="Live status updates active">Live Sync</span>
         </h1>
-        <p class="tagline">Faculty Panel &bull; Signed in as <strong id="who" style="color:#ffffff">...</strong></p>
+        <p class="tagline">Teacher Panel &bull; Signed in as <strong id="who" style="color:#ffffff">...</strong></p>
       </div>
     </div>
     <nav>
@@ -38,32 +38,75 @@
 
   <section id="pending" class="card" hidden>
     <h2 style="margin-top:0">Waiting for approval</h2>
-    <p>Your account is confirmed. An administrator needs to approve it before you can update statuses. Please check back later.</p>
+    <p>Your teacher account is confirmed. An administrator needs to approve it before you can update statuses. Please check back later.</p>
   </section>
 
   <div id="panel" hidden>
     <h2 style="margin-top:0">Your Availability Statuses</h2>
-    <p class="lead" style="color:var(--slate)">Select your current status below. Changes appear immediately on the public board and under your assigned departments.</p>
+    <p class="lead" style="color:var(--slate)">Update your own availability and the status of any facility or room you handle (Computer Laboratory, Clinic, Library, etc.).</p>
     <ul id="items" class="stack"></ul>
 
+    <section id="schedule-section" style="margin-top:2rem">
+      <h2>Weekly School Schedule</h2>
+      <form id="schedule-form" class="card form">
+        <p class="hint" style="margin-top:0">Set the days and hours you are scheduled at school (e.g. 6:00 AM to 3:00 PM). Students can view this schedule when checking your profile or department.</p>
+
+        <div class="sched-quick-bar">
+          <span class="label" style="margin:0">Quick Weekday Fill (Mon–Fri):</span>
+          <div class="sched-quick-controls">
+            <input id="quick-start" type="time" value="06:00" aria-label="Weekday start time">
+            <span class="hint">to</span>
+            <input id="quick-end" type="time" value="15:00" aria-label="Weekday end time">
+            <button id="apply-weekdays" type="button" class="btn" style="padding:0.4rem 0.8rem;font-size:0.8rem">Apply to Mon–Fri</button>
+          </div>
+        </div>
+
+        <div id="schedule-days" class="sched-days-list"></div>
+
+        <button type="submit" class="btn primary">Save School Schedule</button>
+        <p id="schedule-message" class="msg" role="status" hidden></p>
+      </form>
+    </section>
+
     <section id="profile-section" style="margin-top:2rem">
-      <h2>Faculty Profile &amp; Assigned Departments</h2>
+      <h2>Teacher Profile, Department &amp; Assigned Facilities</h2>
       <form id="profile-form" class="card form">
         <div class="field">
           <label for="profile-rank">Rank / Position</label>
           <select id="profile-rank"></select>
         </div>
         <div class="field">
-          <span class="label">Assigned Department(s)</span>
-          <p class="hint">Select the department(s) you are assigned to. This links your live availability to those departments on the board.</p>
+          <span class="label">Select Your Department &amp; Facilities Handled</span>
+          <p class="hint">Any facility you select here will appear in "Your Availability Statuses" above so you can update whether it is Available, Unavailable, or Under Maintenance.</p>
           <div id="profile-departments"></div>
         </div>
         <div class="field">
           <label for="profile-description">About You / Subjects Taught</label>
           <textarea id="profile-description" rows="3" maxlength="500" placeholder="e.g. Practical Research 2, ICT-Kotlin Adviser"></textarea>
         </div>
-        <button type="submit" class="btn primary">Save Profile &amp; Departments</button>
+        <button type="submit" class="btn primary">Save Profile &amp; Assignments</button>
         <p id="profile-message" class="msg" role="status" hidden></p>
+      </form>
+    </section>
+
+    <section id="add-facility-section" style="margin-top:2rem">
+      <h2>Add a Missing Facility / Room</h2>
+      <form id="add-facility-form" class="card form">
+        <p class="hint" style="margin-top:0">If a facility or laboratory you manage is not listed in the checklist above, add it here and it will automatically be assigned to your account.</p>
+        <div class="field">
+          <label for="new-facility-name">Facility / Room Name</label>
+          <input id="new-facility-name" type="text" placeholder="e.g. Computer Laboratory 3, Audio-Visual Room" maxlength="100" required>
+        </div>
+        <div class="field">
+          <label for="new-facility-building">Building (optional)</label>
+          <input id="new-facility-building" type="text" placeholder="e.g. ICT Building, Main Building" maxlength="100">
+        </div>
+        <div class="field">
+          <label for="new-facility-floor">Floor Level (optional)</label>
+          <input id="new-facility-floor" type="text" placeholder="e.g. 2nd Floor" maxlength="60">
+        </div>
+        <button type="submit" class="btn">Add &amp; Assign Facility to Me</button>
+        <p id="add-facility-message" class="msg" role="status" hidden></p>
       </form>
     </section>
 

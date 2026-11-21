@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap">
 <link rel="stylesheet" href="css/styles.css">
 <title>LYFJSHS Availability Board - Centralized Availability</title>
-<meta name="description" content="Centralized real-time availability monitoring for teachers and academic departments of Luis Y. Ferrer Jr. Senior High School.">
+<meta name="description" content="Centralized real-time availability monitoring for teachers, departments, and facilities of Luis Y. Ferrer Jr. Senior High School.">
 <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
@@ -23,13 +23,13 @@
           LYFJSHS Availability
           <span class="live-badge" title="Live status updates active">Live Sync</span>
         </h1>
-        <p class="tagline">Luis Y. Ferrer Jr. Senior High School &bull; Real-Time Faculty &amp; Department Portal</p>
+        <p class="tagline">Luis Y. Ferrer Jr. Senior High School &bull; Real-Time Teacher, Department &amp; Facility Portal</p>
       </div>
     </div>
     <nav>
       <a href="login.html">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
-        Faculty Access
+        Teacher Login
       </a>
     </nav>
   </div>
@@ -78,26 +78,26 @@
     </div>
   </section>
 
-  <label for="search">Search faculty or department</label>
+  <label for="search">Search teacher, department, or facility</label>
   <div class="search-box">
     <span class="search-icon" aria-hidden="true">
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
     </span>
-    <input id="search" type="search" placeholder="Search teacher name, rank, or department (ABM, ICT, SCIENCE, HUMSS, TVL...)" autocomplete="off">
+    <input id="search" type="search" placeholder="Search teacher name, department (ABM, ICT, SCIENCE...), or facility (Clinic, Library, Computer Lab...)" autocomplete="off">
   </div>
 
   <div id="tabs" role="tablist" aria-label="Choose availability view">
     <button type="button" role="tab" data-tab="all" aria-controls="list" aria-selected="true">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
       All (Centralized)
     </button>
     <button type="button" role="tab" data-tab="departments" aria-controls="list" aria-selected="false">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><path d="M9 22v-4h6v4"></path><path d="M8 6h.01"></path><path d="M16 6h.01"></path><path d="M8 10h.01"></path><path d="M16 10h.01"></path><path d="M8 14h.01"></path><path d="M16 14h.01"></path></svg>
       Departments
     </button>
+    <button type="button" role="tab" data-tab="facilities" aria-controls="list" aria-selected="false">
+      Facilities
+    </button>
     <button type="button" role="tab" data-tab="teachers" aria-controls="list" aria-selected="false">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-      Faculties
+      Teachers
     </button>
   </div>
 
@@ -134,11 +134,19 @@
   <span id="refreshed" class="refreshed"></span>
 </main>
 
+<!-- Teacher Profile & Schedule Modal -->
+<div id="teacher-modal" class="tmodal-backdrop" role="dialog" aria-modal="true" aria-labelledby="tmodal-title" hidden>
+  <div class="tmodal-card">
+    <button id="teacher-modal-close" type="button" class="tmodal-close" aria-label="Close teacher profile">&times;</button>
+    <div id="teacher-modal-body"></div>
+  </div>
+</div>
+
 <footer>
   <div class="wrap" style="flex-direction:column;gap:0.75rem">
     <div style="display:flex;align-items:flex-start;gap:0.65rem">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-svg" style="margin-top:2px"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-      <p>Click any department card to view the faculty members assigned to it and check who is currently available. <strong>Status Not Updated</strong> indicates availability has not yet been confirmed today.</p>
+      <p>Click any department card to view the teachers assigned to it and check who is currently available. <strong>Status Not Updated</strong> indicates availability has not yet been confirmed today.</p>
     </div>
     <div style="font-size:0.82rem;color:var(--muted)">
       Luis Y. Ferrer Jr. Senior High School &bull; Teacher &amp; Department Availability Monitoring System

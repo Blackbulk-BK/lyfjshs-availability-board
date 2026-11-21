@@ -1,258 +1,163 @@
-// js/board.js : Centralized public availability board (Luis Y. Ferrer Jr. Senior High School).
+// js/dashboard.js : Teacher panel — update availability, unavailability reason,
+// weekly schedule, department/facility assignments, delegates, and profile photo.
 import { supabase } from "./supabaseClient.js";
-import { getIcon, refreshLucide } from "./icons.js";
+import {
+  requireLogin,
+  signOut,
+  fillRankSelect,
+  fetchDepartments,
+  renderDepartmentChecks,
+  checkedIds,
+  friendlyError,
+} from "./auth.js";
 
 const TZ = "Asia/Manila";
-const REFRESH_MS = 5 * 60 * 1000;
-
-export const LABELS = {
+const LABELS = {
   available: "Available",
   unavailable: "Unavailable",
   under_maintenance: "Under Maintenance",
   not_updated: "Status Not Updated",
 };
 
-export const CATEGORIES = {
-  academic: "Academic Department",
-  admin: "Administrative Office",
-  other: "Department",
-};
+const UNAVAIL_TAGS = [
+  "In Class / Teaching",
+  "Faculty Meeting",
+  "On Official Business",
+  "On Leave / Absent",
+  "Consultation / Break",
+];
 
-const state = {
-  tab: "all", // "all" | "teachers" | "departments"
-  filter: "all", // "all" | "available" | "unavailable" | "under_maintenance" | "not_updated"
-  query: "",
-  teachers: [],
-  departments: [],
-  expandedDepts: new Set(),
-  hasData: false,
-  loading: false,
-  queued: false,
-  error: false,
-};
+const DAYS = [
+  { key: "Mon", label: "Monday" },
+  { key: "Tue", label: "Tuesday" },
+  { key: "Wed", label: "Wednesday" },
+  { key: "Thu", label: "Thursday" },
+  { key: "Fri", label: "Friday" },
+  { key: "Sat", label: "Saturday" },
+];
 
 const $ = (id) => document.getElementById(id);
-const el = {
-  list: $("list"),
-  search: $("search"),
-  tabs: $("tabs"),
-  filters: $("filters"),
-  message: $("message"),
-  retry: $("retry"),
-  refreshed: $("refreshed"),
-  latestUpdateTime: $("latest-update-time"),
-  systemSync: $("system-sync"),
-  countAvailable: $("count-available"),
-  countUnavailable: $("count-unavailable"),
-  countMaintenance: $("count-maintenance"),
-  countNotUpdated: $("count-not-updated"),
-  boardSummary: $("board-summary"),
-};
-
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ });
 const timeFmt = new Intl.DateTimeFormat("en-PH", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
-const shortDateFmt = new Intl.DateTimeFormat("en-PH", { timeZone: TZ, month: "short", day: "numeric" });
-const fullDateTimeFmt = new Intl.DateTimeFormat("en-PH", {
-  timeZone: TZ,
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
-// ---------- Helpers ----------
-const norm = (s) => (s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "");
+let me = null;
+let myTeacher = null;
+let myAvatar = null;
+let myRole = "teacher";
+let assignablePool = [];
 
-function initials(name) {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  const first = parts[0]?.[0] ?? "?";
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
-  return (first + last).toUpperCase();
+function flash(el, text, bad = false) {
+  if (!el) return;
+  el.textContent = text;
+  el.dataset.state = bad ? "error" : "ok";
+  el.hidden = !text;
 }
 
-function updatedText(item) {
-  if (!item.updated_at) {
-    return item.display_status === "not_updated"
-      ? "Status Not Updated (No recorded update)"
-      : "No update timestamp recorded";
+function displayStatus(row) {
+  if (row.category === "facility" && row.status === "under_maintenance") {
+    return "under_maintenance";
   }
-
-  const d = new Date(item.updated_at);
-  const isToday = dayFmt.format(d) === dayFmt.format(new Date());
-
-  if (item.display_status === "under_maintenance") {
-    return isToday
-      ? `Under Maintenance • Updated today at ${timeFmt.format(d)}`
-      : `Under Maintenance • Recorded ${fullDateTimeFmt.format(d)}`;
-  }
-
-  if (item.display_status === "not_updated") {
-    return `Status Not Updated • Last active: ${fullDateTimeFmt.format(d)}`;
-  }
-
-  return isToday
-    ? `Updated today at ${timeFmt.format(d)} (${shortDateFmt.format(d)})`
-    : `Last updated: ${fullDateTimeFmt.format(d)}`;
+  if (!row.status || !row.updated_at) return "not_updated";
+  const isToday = dayFmt.format(new Date(row.updated_at)) === dayFmt.format(new Date());
+  return isToday ? row.status : "not_updated";
 }
 
-function showMessage(text, withRetry = false) {
-  if (!el.message) return;
-  el.message.textContent = text;
-  el.message.hidden = !text;
-  if (el.retry) el.retry.hidden = !withRetry;
+function updatedLabel(row) {
+  const st = displayStatus(row);
+  if (!row.updated_at) return "Never updated";
+  const d = new Date(row.updated_at);
+  if (st === "not_updated") return `Not updated today (last: ${timeFmt.format(d)})`;
+  return `Updated today at ${timeFmt.format(d)}`;
 }
 
-function computeFallbackStatus(status, updatedAt) {
-  if (status === "under_maintenance") return "under_maintenance";
-  if (!status || !updatedAt) return "not_updated";
-  const isToday = dayFmt.format(new Date(updatedAt)) === dayFmt.format(new Date());
-  return isToday ? status : "not_updated";
-}
+// ---------- Teacher Unavailability Reason Editor ----------
+function buildUnavailEditor(row, statusBadge, metaLine) {
+  const box = document.createElement("div");
+  box.className = "unavail-editor";
+  box.hidden = row.status !== "unavailable";
 
-// ---------- Summary Counters & Timestamps ----------
-function updateSummaryStats() {
-  const allItems = [...state.teachers, ...state.departments];
+  const lbl = document.createElement("label");
+  lbl.className = "unavail-label";
+  lbl.textContent = "Why are you unavailable? (Shown on the public board)";
 
-  let available = 0, unavailable = 0, maintenance = 0, notUpdated = 0;
-  let latestTimestamp = 0;
+  const tagBar = document.createElement("div");
+  tagBar.className = "unavail-tags";
 
-  for (const item of allItems) {
-    if (item.display_status === "available") available++;
-    else if (item.display_status === "unavailable") unavailable++;
-    else if (item.display_status === "under_maintenance") maintenance++;
-    else notUpdated++;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = 200;
+  input.placeholder = "Select a tag above or type a short reason (e.g. Teaching ICT-Kotlin until 10:30 AM)";
+  input.value = row.unavailable_reason || "";
 
-    if (item.updated_at) {
-      const ts = new Date(item.updated_at).getTime();
-      if (!isNaN(ts) && ts > latestTimestamp) latestTimestamp = ts;
-    }
-  }
-
-  if (el.countAvailable) el.countAvailable.textContent = String(available);
-  if (el.countUnavailable) el.countUnavailable.textContent = String(unavailable);
-  if (el.countMaintenance) el.countMaintenance.textContent = String(maintenance);
-  if (el.countNotUpdated) el.countNotUpdated.textContent = String(notUpdated);
-
-  if (el.latestUpdateTime) {
-    el.latestUpdateTime.textContent = latestTimestamp > 0
-      ? fullDateTimeFmt.format(new Date(latestTimestamp))
-      : "No recent records";
-  }
-
-  if (el.systemSync) {
-    el.systemSync.textContent = `${fullDateTimeFmt.format(new Date())} (Live)`;
-  }
-}
-
-// ---------- Rendering ----------
-function avatarNode(item, size = 44) {
-  const wrap = document.createElement("div");
-  wrap.className = "avatar";
-  if (size !== 44) {
-    wrap.style.width = `${size}px`;
-    wrap.style.height = `${size}px`;
-    wrap.style.fontSize = "0.78rem";
-  }
-  const personName = item.name || item.full_name;
-  if (item.avatar_path) {
-    const { data } = supabase.storage.from("avatars").getPublicUrl(item.avatar_path);
-    const img = new Image(size, size);
-    img.loading = "lazy";
-    img.alt = "";
-    img.src = data.publicUrl;
-    img.onerror = () => { img.remove(); wrap.textContent = initials(personName); };
-    wrap.append(img);
-  } else {
-    wrap.textContent = initials(personName);
-  }
-  return wrap;
-}
-
-function departmentIconNode(deptName) {
-  const wrap = document.createElement("div");
-  wrap.className = "avatar dept-monogram";
-  wrap.textContent = (deptName || "DP").slice(0, 3).toUpperCase();
-  return wrap;
-}
-
-function buildDeptRosterDrawer(dept) {
-  const teachers = Array.isArray(dept.assigned_teachers) ? dept.assigned_teachers : [];
-  const drawer = document.createElement("div");
-  drawer.className = "dept-roster-drawer";
-
-  const header = document.createElement("div");
-  header.className = "dept-roster-header";
-
-  const availCount = teachers.filter((t) => t.display_status === "available").length;
-  header.innerHTML = `
-    <span>Assigned Faculty (${teachers.length})</span>
-    <span class="dept-avail-summary">${availCount} Available Now</span>
-  `;
-  drawer.append(header);
-
-  if (!teachers.length) {
-    const empty = document.createElement("p");
-    empty.className = "dept-roster-empty";
-    empty.textContent = "No teachers are currently assigned to this department.";
-    drawer.append(empty);
-    return drawer;
-  }
-
-  const ul = document.createElement("ul");
-  ul.className = "dept-roster-list";
-
-  teachers.forEach((t) => {
-    const row = document.createElement("li");
-    row.className = `dept-teacher-item is-${t.display_status}`;
-
-    const left = document.createElement("div");
-    left.className = "dept-teacher-person";
-    left.append(avatarNode(t, 34));
-
-    const details = document.createElement("div");
-    details.className = "dept-teacher-details";
-    const tName = document.createElement("span");
-    tName.className = "dept-teacher-name";
-    tName.textContent = t.name;
-    const tRank = document.createElement("span");
-    tRank.className = "dept-teacher-rank";
-    tRank.textContent = t.rank_level || "Faculty Member";
-    details.append(tName, tRank);
-    left.append(details);
-
-    const miniPill = document.createElement("span");
-    miniPill.className = `pill mini status-${t.display_status}`;
-    const dot = document.createElement("span");
-    dot.className = "dot";
-    miniPill.append(dot, document.createTextNode(LABELS[t.display_status] ?? t.display_status));
-
-    row.append(left, miniPill);
-    ul.append(row);
+  UNAVAIL_TAGS.forEach((tag) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "unavail-chip";
+    chip.textContent = tag;
+    chip.addEventListener("click", () => {
+      input.value = tag;
+      input.focus();
+    });
+    tagBar.append(chip);
   });
 
-  drawer.append(ul);
-  return drawer;
+  const saveRow = document.createElement("div");
+  saveRow.className = "unavail-actions";
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "btn primary";
+  saveBtn.style.padding = "0.38rem 0.85rem";
+  saveBtn.style.fontSize = "0.82rem";
+  saveBtn.textContent = "Save Reason & Set Unavailable";
+
+  const note = document.createElement("span");
+  note.className = "hint";
+
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true;
+    note.textContent = "Saving...";
+    try {
+      const reason = input.value.trim() || null;
+      const { error } = await supabase
+        .from("teachers")
+        .update({ status: "unavailable", unavailable_reason: reason })
+        .eq("id", row.id);
+      if (error) throw error;
+
+      row.status = "unavailable";
+      row.unavailable_reason = reason;
+      row.updated_at = new Date().toISOString();
+
+      const st = displayStatus(row);
+      statusBadge.className = `pill status-${st}`;
+      statusBadge.innerHTML = `<span class="dot"></span>${LABELS[st]}`;
+      metaLine.textContent = reason ? `${updatedLabel(row)} • Reason: ${reason}` : updatedLabel(row);
+      note.textContent = "Saved!";
+      setTimeout(() => { note.textContent = ""; }, 2500);
+    } catch (err) {
+      console.error(err);
+      note.textContent = friendlyError(err);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  saveRow.append(saveBtn, note);
+  box.append(lbl, tagBar, input, saveRow);
+  return box;
 }
 
-function rowNode(item) {
-  const isTeacher = item.entity_type === "teacher";
-  const isExpanded = !isTeacher && (state.expandedDepts.has(item.id) || state.tab === "departments");
+// ---------- Status Cards (Teacher + Assigned Departments/Facilities) ----------
+function itemCard(row) {
+  const isTeacher = row.kind === "teacher";
+  const isFacility = row.kind === "department" && row.category === "facility";
+  const isDept = row.kind === "department" && !isFacility;
 
   const li = document.createElement("li");
-  li.className = `row ${!isTeacher ? "row-department" : ""} ${isExpanded ? "is-expanded" : ""}`;
-  li.dataset.status = item.display_status;
-  li.classList.add(`has-status-${item.display_status}`);
-
-  const mainLine = document.createElement("div");
-  mainLine.className = "row-main";
-
-  if (isTeacher) {
-    mainLine.append(avatarNode(item));
-  } else {
-    mainLine.append(departmentIconNode(item.name));
-  }
+  li.className = "item";
+  const st = displayStatus(row);
+  li.dataset.status = st;
 
   const info = document.createElement("div");
   info.className = "info";
@@ -260,355 +165,547 @@ function rowNode(item) {
   const titleRow = document.createElement("div");
   titleRow.className = "title-row";
 
-  const entityBadge = document.createElement("span");
-  entityBadge.className = `entity-tag ${isTeacher ? "tag-teacher" : "tag-dept"}`;
-  entityBadge.textContent = isTeacher ? "Faculty" : (item.name === "ADMIN" ? "Office" : "Department");
-  titleRow.append(entityBadge);
+  const badge = document.createElement("span");
+  badge.className = `entity-tag ${isTeacher ? "tag-teacher" : isFacility ? "tag-facility" : "tag-dept"}`;
+  badge.textContent = isTeacher ? "Teacher" : isFacility ? "Facility" : "Department";
 
   const name = document.createElement("span");
   name.className = "name";
-  name.textContent = item.name;
-  titleRow.append(name);
+  name.textContent = row.name;
 
-  if (!isTeacher) {
-    const assigned = Array.isArray(item.assigned_teachers) ? item.assigned_teachers : [];
-    const availCount = assigned.filter((t) => t.display_status === "available").length;
-    const countChip = document.createElement("span");
-    countChip.className = `dept-count-chip ${availCount > 0 ? "has-available" : ""}`;
-    countChip.textContent = assigned.length
-      ? `${availCount}/${assigned.length} Teachers Available`
-      : "0 Teachers Assigned";
-    titleRow.append(countChip);
-  }
+  titleRow.append(badge, name);
 
   const meta = document.createElement("div");
   meta.className = "meta";
-
-  const clockSpan = document.createElement("span");
-  clockSpan.innerHTML = getIcon("clock", "icon-svg");
-  clockSpan.style.display = "inline-flex";
-  clockSpan.style.marginRight = "0.2rem";
-  clockSpan.setAttribute("aria-hidden", "true");
-
-  const timeTextNode = document.createElement("span");
-  timeTextNode.className = "time-stamp";
-  timeTextNode.textContent = updatedText(item);
-
-  meta.append(clockSpan, timeTextNode);
-
-  const subDetails = document.createElement("div");
-  subDetails.className = "sub-details";
-
-  if (!isTeacher) {
-    if (item.open_time && item.close_time) {
-      const hrs = document.createElement("span");
-      hrs.className = "meta-tag";
-      hrs.innerHTML = `${getIcon("clock", "icon-svg")} ${item.open_time.slice(0, 5)} - ${item.close_time.slice(0, 5)}`;
-      subDetails.append(hrs);
-    }
-    const hintTag = document.createElement("span");
-    hintTag.className = "meta-tag dept-toggle-hint";
-    hintTag.textContent = isExpanded ? "Hide assigned teachers" : "Click to view assigned teachers";
-    subDetails.append(hintTag);
-  } else {
-    if (item.rank_level) {
-      const rk = document.createElement("span");
-      rk.className = "meta-tag";
-      rk.innerHTML = `${getIcon("userCheck", "icon-svg")} <strong>${item.rank_level}</strong>`;
-      subDetails.append(rk);
-    }
-    if (item.handles) {
-      const hnd = document.createElement("span");
-      hnd.className = "meta-tag";
-      hnd.innerHTML = `${getIcon("building", "icon-svg")} Dept: <strong>${item.handles}</strong>`;
-      subDetails.append(hnd);
-    }
-    if (item.description) {
-      const desc = document.createElement("span");
-      desc.className = "meta-tag";
-      desc.textContent = item.description;
-      subDetails.append(desc);
-    }
-  }
+  meta.textContent =
+    isTeacher && st === "unavailable" && row.unavailable_reason
+      ? `${updatedLabel(row)} • Reason: ${row.unavailable_reason}`
+      : updatedLabel(row);
 
   info.append(titleRow, meta);
-  if (subDetails.children.length > 0) info.append(subDetails);
 
   const pill = document.createElement("span");
-  pill.className = `pill status-${item.display_status}`;
-  const dot = document.createElement("span");
-  dot.className = "dot";
-  dot.setAttribute("aria-hidden", "true");
-  pill.append(dot, document.createTextNode(LABELS[item.display_status] ?? item.display_status));
+  pill.className = `pill status-${st}`;
+  pill.innerHTML = `<span class="dot"></span>${LABELS[st]}`;
 
-  mainLine.append(info, pill);
-  li.append(mainLine);
+  // Status Buttons:
+  // - Teachers: Available, Unavailable (opens reason box)
+  // - Departments: Available, Unavailable (NO Under Maintenance!)
+  // - Facilities: Available, Unavailable, Under Maintenance
+  const statuses = isFacility
+    ? ["available", "unavailable", "under_maintenance"]
+    : ["available", "unavailable"];
 
-  // Interactive click on department card to toggle assigned teachers roster
-  if (!isTeacher) {
-    mainLine.style.cursor = "pointer";
-    mainLine.setAttribute("role", "button");
-    mainLine.setAttribute("tabindex", "0");
-    mainLine.setAttribute("aria-expanded", String(isExpanded));
+  const actions = document.createElement("div");
+  actions.className = "actions";
 
-    const toggleDept = () => {
-      if (state.expandedDepts.has(item.id)) {
-        state.expandedDepts.delete(item.id);
-      } else {
-        state.expandedDepts.add(item.id);
+  let unavailBox = null;
+  if (isTeacher) {
+    unavailBox = buildUnavailEditor(row, pill, meta);
+  }
+
+  statuses.forEach((target) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `btn btn-${target}`;
+    btn.textContent = LABELS[target];
+
+    btn.addEventListener("click", async () => {
+      if (isTeacher && target === "unavailable" && unavailBox) {
+        unavailBox.hidden = false;
       }
-      render();
-    };
 
-    mainLine.addEventListener("click", toggleDept);
-    mainLine.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggleDept();
+      actions.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+      try {
+        const table = isTeacher ? "teachers" : "departments";
+        const payload = { status: target };
+        if (isTeacher && target === "available") {
+          payload.unavailable_reason = null;
+        }
+
+        const { error } = await supabase.from(table).update(payload).eq("id", row.id);
+        if (error) throw error;
+
+        row.status = target;
+        if (isTeacher && target === "available") {
+          row.unavailable_reason = null;
+          if (unavailBox) {
+            unavailBox.hidden = true;
+            const inp = unavailBox.querySelector("input");
+            if (inp) inp.value = "";
+          }
+        }
+        row.updated_at = new Date().toISOString();
+
+        const nextSt = displayStatus(row);
+        li.dataset.status = nextSt;
+        pill.className = `pill status-${nextSt}`;
+        pill.innerHTML = `<span class="dot"></span>${LABELS[nextSt]}`;
+        meta.textContent =
+          isTeacher && nextSt === "unavailable" && row.unavailable_reason
+            ? `${updatedLabel(row)} • Reason: ${row.unavailable_reason}`
+            : updatedLabel(row);
+      } catch (err) {
+        console.error(err);
+        flash($("dash-message"), friendlyError(err), true);
+      } finally {
+        actions.querySelectorAll("button").forEach((b) => { b.disabled = false; });
       }
     });
 
-    if (isExpanded) {
-      li.append(buildDeptRosterDrawer(item));
-    }
+    actions.append(btn);
+  });
+
+  li.append(info, pill, actions);
+
+  if (unavailBox) {
+    li.append(unavailBox);
+  }
+
+  // Operating Hours editor for Facilities & Departments
+  if (!isTeacher) {
+    const hours = document.createElement("div");
+    hours.className = "hours";
+
+    const lbl = document.createElement("span");
+    lbl.className = "hint";
+    lbl.textContent = isFacility ? "Facility Hours:" : "Office Hours:";
+
+    const openIn = document.createElement("input");
+    openIn.type = "time";
+    openIn.value = row.open_time ? row.open_time.slice(0, 5) : "";
+
+    const closeIn = document.createElement("input");
+    closeIn.type = "time";
+    closeIn.value = row.close_time ? row.close_time.slice(0, 5) : "";
+
+    const saveHrs = document.createElement("button");
+    saveHrs.type = "button";
+    saveHrs.className = "btn";
+    saveHrs.style.padding = "0.35rem 0.75rem";
+    saveHrs.style.fontSize = "0.8rem";
+    saveHrs.textContent = "Save Hours";
+
+    saveHrs.addEventListener("click", async () => {
+      saveHrs.disabled = true;
+      try {
+        const { error } = await supabase
+          .from("departments")
+          .update({
+            open_time: openIn.value || null,
+            close_time: closeIn.value || null,
+          })
+          .eq("id", row.id);
+        if (error) throw error;
+        saveHrs.textContent = "Saved";
+        setTimeout(() => { saveHrs.textContent = "Save Hours"; }, 2000);
+      } catch (err) {
+        console.error(err);
+        flash($("dash-message"), friendlyError(err), true);
+      } finally {
+        saveHrs.disabled = false;
+      }
+    });
+
+    hours.append(lbl, openIn, document.createTextNode("to"), closeIn, saveHrs);
+    li.append(hours);
   }
 
   return li;
 }
 
-function renderSkeleton() {
-  const rows = Array.from({ length: 6 }, () => {
-    const li = document.createElement("li");
-    li.className = "row skeleton";
-    li.setAttribute("aria-hidden", "true");
-    return li;
-  });
-  el.list.replaceChildren(...rows);
-}
+async function loadItems() {
+  const list = $("items");
+  if (!list || !me) return;
 
-function matchItem(item, q) {
-  if (!q) return true;
-  const name = norm(item.name || item.full_name || "");
-  const handlers = norm(item.handlers || "");
-  const handles = norm(item.handles || "");
-  const rank = norm(item.rank_level || "");
-  const desc = norm(item.description || "");
+  const rows = [];
 
-  return (
-    name.includes(q) ||
-    handlers.includes(q) ||
-    handles.includes(q) ||
-    rank.includes(q) ||
-    desc.includes(q)
-  );
-}
+  // 1) Own teacher record
+  const { data: ownT } = await supabase
+    .from("teachers")
+    .select("id, full_name, status, updated_at, rank_level, description, avatar_path, unavailable_reason, schedule")
+    .eq("user_id", me.id)
+    .maybeSingle();
 
-function getActiveItems() {
-  if (state.tab === "teachers") return state.teachers;
-  if (state.tab === "departments") return state.departments;
-  return [...state.departments, ...state.teachers];
-}
-
-function visibleItems() {
-  const q = norm(state.query.trim());
-  const pool = getActiveItems();
-
-  return pool.filter((item) => {
-    const matchesFilter = state.filter === "all" || item.display_status === state.filter;
-    const matchesQuery = matchItem(item, q);
-    return matchesFilter && matchesQuery;
-  });
-}
-
-function render() {
-  const items = visibleItems();
-  el.list.replaceChildren(...items.map(rowNode));
-
-  if (!state.error) {
-    if (items.length === 0) {
-      const q = state.query.trim();
-      if (q) {
-        showMessage(`No matches found for "${q}". Try searching by department (e.g. ICT, STEM/SCIENCE, ABM) or teacher name.`);
-      } else {
-        showMessage("No records match the selected filter.");
-      }
-    } else {
-      showMessage("");
-    }
+  if (ownT) {
+    myTeacher = ownT;
+    myAvatar = ownT.avatar_path;
+    rows.push({ ...ownT, name: ownT.full_name, kind: "teacher" });
   }
 
-  refreshLucide();
+  // 2) Delegated teachers
+  const { data: delT } = await supabase
+    .from("status_managers")
+    .select("teachers(id, full_name, status, updated_at, unavailable_reason)")
+    .eq("manager_id", me.id)
+    .not("teacher_id", "is", null);
+
+  (delT ?? []).forEach((r) => {
+    if (r.teachers && r.teachers.id !== myTeacher?.id) {
+      rows.push({ ...r.teachers, name: r.teachers.full_name, kind: "teacher" });
+    }
+  });
+
+  // 3) Assigned departments & facilities (via department_staff)
+  const deptMap = new Map();
+  if (myTeacher) {
+    const { data: staffRows } = await supabase
+      .from("department_staff")
+      .select("departments(id, name, category, status, updated_at, open_time, close_time)")
+      .eq("teacher_id", myTeacher.id);
+    (staffRows ?? []).forEach((r) => {
+      if (r.departments) deptMap.set(r.departments.id, { ...r.departments, kind: "department" });
+    });
+  }
+
+  // 4) Delegated departments & facilities (via status_managers)
+  const { data: delD } = await supabase
+    .from("status_managers")
+    .select("departments(id, name, category, status, updated_at, open_time, close_time)")
+    .eq("manager_id", me.id)
+    .not("department_id", "is", null);
+
+  (delD ?? []).forEach((r) => {
+    if (r.departments) deptMap.set(r.departments.id, { ...r.departments, kind: "department" });
+  });
+
+  deptMap.forEach((d) => rows.push(d));
+  list.replaceChildren(...rows.map(itemCard));
 }
 
-// ---------- Loading & Backend Query Resilience ----------
-async function fetchBoard({ first = false } = {}) {
-  if (state.loading) { state.queued = true; return; }
-  state.loading = true;
-  if (first) renderSkeleton();
+// ---------- Weekly School Schedule Editor ----------
+function initScheduleEditor() {
+  const container = $("schedule-days");
+  const form = $("schedule-form");
+  const msgEl = $("schedule-message");
+  const applyWeekdaysBtn = $("apply-weekdays");
+  if (!container || !form || !myTeacher) return;
 
-  try {
-    let teachersData = [];
+  const saved = myTeacher.schedule && typeof myTeacher.schedule === "object" ? myTeacher.schedule : {};
+  const controls = {};
+
+  container.replaceChildren();
+  DAYS.forEach((d) => {
+    const slot = saved[d.key] || {};
+    const isActive = Boolean(slot.start && slot.end);
+
+    const row = document.createElement("div");
+    row.className = "sched-edit-row";
+
+    const dayLabel = document.createElement("label");
+    dayLabel.className = "sched-day-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = isActive;
+    const span = document.createElement("span");
+    span.textContent = d.label;
+    dayLabel.append(cb, span);
+
+    const times = document.createElement("div");
+    times.className = "sched-time-inputs";
+
+    const startIn = document.createElement("input");
+    startIn.type = "time";
+    startIn.value = slot.start || "06:00";
+    startIn.disabled = !isActive;
+
+    const toTxt = document.createElement("span");
+    toTxt.className = "hint";
+    toTxt.textContent = "to";
+
+    const endIn = document.createElement("input");
+    endIn.type = "time";
+    endIn.value = slot.end || "15:00";
+    endIn.disabled = !isActive;
+
+    cb.addEventListener("change", () => {
+      startIn.disabled = !cb.checked;
+      endIn.disabled = !cb.checked;
+    });
+
+    times.append(startIn, toTxt, endIn);
+    row.append(dayLabel, times);
+    container.append(row);
+
+    controls[d.key] = { cb, startIn, endIn };
+  });
+
+  if (applyWeekdaysBtn) {
+    applyWeekdaysBtn.addEventListener("click", () => {
+      const sVal = $("quick-start")?.value || "06:00";
+      const eVal = $("quick-end")?.value || "15:00";
+      ["Mon", "Tue", "Wed", "Thu", "Fri"].forEach((k) => {
+        if (controls[k]) {
+          controls[k].cb.checked = true;
+          controls[k].startIn.disabled = false;
+          controls[k].endIn.disabled = false;
+          controls[k].startIn.value = sVal;
+          controls[k].endIn.value = eVal;
+        }
+      });
+    });
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector("button[type=submit]");
+    btn.disabled = true;
+    msgEl.hidden = true;
+
     try {
-      const t = await supabase.from("teachers_board").select("*").order("name");
-      if (t.error) throw t.error;
-      teachersData = (t.data ?? []).map((r) => ({ ...r, entity_type: "teacher" }));
-    } catch (err) {
-      console.warn("teachers_board view fallback:", err);
-      const fallback = await supabase
+      const nextSchedule = {};
+      for (const d of DAYS) {
+        const { cb, startIn, endIn } = controls[d.key];
+        if (cb.checked) {
+          if (!startIn.value || !endIn.value) {
+            throw new Error(`Please set both start and end times for ${d.label}.`);
+          }
+          if (endIn.value <= startIn.value) {
+            throw new Error(`End time must be after start time on ${d.label}.`);
+          }
+          nextSchedule[d.key] = { start: startIn.value, end: endIn.value };
+        }
+      }
+
+      const { error } = await supabase
         .from("teachers")
-        .select("id, full_name, status, updated_at, avatar_path, rank_level, description")
-        .eq("is_active", true)
-        .order("full_name");
-      if (fallback.error) throw fallback.error;
-      teachersData = (fallback.data ?? []).map((r) => ({
-        ...r,
-        name: r.full_name,
-        display_status: computeFallbackStatus(r.status, r.updated_at),
-        entity_type: "teacher",
-      }));
-    }
+        .update({ schedule: nextSchedule })
+        .eq("id", myTeacher.id);
+      if (error) throw error;
 
-    let departmentsData = [];
-    try {
-      const d = await supabase.from("departments_board").select("*").order("name");
-      if (d.error) throw d.error;
-      departmentsData = (d.data ?? []).map((r) => ({ ...r, entity_type: "department" }));
+      myTeacher.schedule = nextSchedule;
+      flash(msgEl, "School schedule updated! Students can now view your hours on the board.");
     } catch (err) {
-      console.warn("departments_board view fallback:", err);
-      const fallback = await supabase
-        .from("departments")
-        .select("id, name, category, status, updated_at, open_time, close_time")
-        .eq("is_active", true)
-        .order("name");
-      if (fallback.error) throw fallback.error;
-      departmentsData = (fallback.data ?? []).map((r) => ({
-        ...r,
-        display_status: computeFallbackStatus(r.status, r.updated_at),
-        assigned_teachers: [],
-        entity_type: "department",
-      }));
+      console.error(err);
+      flash(msgEl, err?.message || friendlyError(err), true);
+    } finally {
+      btn.disabled = false;
     }
-
-    state.teachers = teachersData;
-    state.departments = departmentsData;
-    state.hasData = true;
-    state.error = false;
-
-    updateSummaryStats();
-    showMessage("");
-    render();
-
-    if (el.refreshed) {
-      el.refreshed.textContent = `Refreshed ${timeFmt.format(new Date())}`;
-    }
-  } catch (err) {
-    console.error("Board load failed:", err);
-    state.error = true;
-    if (state.hasData) {
-      showMessage("Could not refresh live data. Showing last recorded availability.", true);
-    } else {
-      el.list.replaceChildren();
-      showMessage("Could not connect to availability database. Check connection or verify Supabase setup.", true);
-    }
-  } finally {
-    state.loading = false;
-    if (state.queued) {
-      state.queued = false;
-      fetchBoard();
-    }
-  }
-}
-
-// ---------- Real-time Updates ----------
-let refreshTimer;
-function scheduleRefresh() {
-  clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(() => fetchBoard(), 300);
-}
-
-function subscribeToChanges() {
-  supabase
-    .channel("board-centralized")
-    .on("postgres_changes", { event: "*", schema: "public", table: "teachers" }, scheduleRefresh)
-    .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, scheduleRefresh)
-    .on("postgres_changes", { event: "*", schema: "public", table: "department_staff" }, scheduleRefresh)
-    .subscribe();
-}
-
-// ---------- Controls & Event Wiring ----------
-function setActive(container, attr, value, ariaAttr) {
-  if (!container) return;
-  container.querySelectorAll("button").forEach((b) => {
-    b.setAttribute(ariaAttr, String(b.dataset[attr] === value));
   });
 }
 
-function wireControls() {
-  if (el.search) {
-    el.search.addEventListener("input", () => {
-      state.query = el.search.value;
-      render();
-    });
-  }
+// ---------- Profile, Single Department & Assigned Facilities ----------
+async function initProfile() {
+  const form = $("profile-form");
+  const msgEl = $("profile-message");
+  if (!form || !myTeacher) return;
 
-  if (el.tabs) {
-    el.tabs.addEventListener("click", (e) => {
-      const b = e.target.closest("button[data-tab]");
-      if (!b) return;
-      state.tab = b.dataset.tab;
-      // Auto-expand all departments when switching directly to the Departments tab
-      if (state.tab === "departments") {
-        state.departments.forEach((d) => state.expandedDepts.add(d.id));
+  fillRankSelect($("profile-rank"), myTeacher.rank_level || "");
+  $("profile-description").value = myTeacher.description || "";
+
+  const [allDepts, { data: myLinks }] = await Promise.all([
+    fetchDepartments(),
+    supabase.from("department_staff").select("department_id").eq("teacher_id", myTeacher.id),
+  ]);
+
+  const selectedSet = new Set((myLinks ?? []).map((r) => r.department_id));
+  renderDepartmentChecks($("profile-departments"), allDepts, selectedSet);
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector("button[type=submit]");
+    btn.disabled = true;
+    msgEl.hidden = true;
+
+    try {
+      const rank_level = $("profile-rank").value || null;
+      const description = $("profile-description").value.trim() || null;
+      const chosenIds = checkedIds($("profile-departments"));
+
+      const { error: upErr } = await supabase
+        .from("teachers")
+        .update({ rank_level, description })
+        .eq("id", myTeacher.id);
+      if (upErr) throw upErr;
+
+      // Sync department_staff
+      await supabase.from("department_staff").delete().eq("teacher_id", myTeacher.id);
+      if (chosenIds.length) {
+        const rows = chosenIds.map((department_id) => ({ teacher_id: myTeacher.id, department_id }));
+        const { error: insErr } = await supabase.from("department_staff").insert(rows);
+        if (insErr) throw insErr;
       }
-      setActive(el.tabs, "tab", state.tab, "aria-selected");
-      render();
-    });
-  }
 
-  if (el.filters) {
-    el.filters.addEventListener("click", (e) => {
-      const b = e.target.closest("button[data-filter]");
-      if (!b) return;
-      state.filter = b.dataset.filter;
-      setActive(el.filters, "filter", state.filter, "aria-pressed");
-      updateStatChipHighlight();
-      render();
-    });
-  }
-
-  if (el.boardSummary) {
-    el.boardSummary.addEventListener("click", (e) => {
-      const chip = e.target.closest("[data-stat-filter]");
-      if (!chip) return;
-      const targetFilter = chip.dataset.statFilter;
-      state.filter = state.filter === targetFilter ? "all" : targetFilter;
-      setActive(el.filters, "filter", state.filter, "aria-pressed");
-      updateStatChipHighlight();
-      render();
-    });
-  }
-
-  if (el.retry) {
-    el.retry.addEventListener("click", () => fetchBoard());
-  }
+      myTeacher.rank_level = rank_level;
+      myTeacher.description = description;
+      await loadItems();
+      flash(msgEl, "Profile, department, and facility assignments saved.");
+    } catch (err) {
+      console.error(err);
+      flash(msgEl, friendlyError(err), true);
+    } finally {
+      btn.disabled = false;
+    }
+  };
 }
 
-function updateStatChipHighlight() {
-  if (!el.boardSummary) return;
-  el.boardSummary.querySelectorAll("[data-stat-filter]").forEach((chip) => {
-    chip.classList.toggle("active", chip.dataset.statFilter === state.filter);
+// ---------- Add a Missing Facility ----------
+function initAddFacility() {
+  const form = $("add-facility-form");
+  const msgEl = $("add-facility-message");
+  if (!form || !myTeacher) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("new-facility-name").value.trim();
+    const building = $("new-facility-building").value.trim() || null;
+    const floor_level = $("new-facility-floor").value.trim() || null;
+    if (!name) return;
+
+    const btn = form.querySelector("button[type=submit]");
+    btn.disabled = true;
+    msgEl.hidden = true;
+
+    try {
+      const { data: created, error: insErr } = await supabase
+        .from("departments")
+        .insert({ name, category: "facility", building, floor_level, is_active: true })
+        .select("id")
+        .single();
+      if (insErr) throw insErr;
+
+      const { error: linkErr } = await supabase
+        .from("department_staff")
+        .insert({ teacher_id: myTeacher.id, department_id: created.id });
+      if (linkErr) throw linkErr;
+
+      form.reset();
+      await initProfile();
+      await loadItems();
+      flash(msgEl, `"${name}" was added and assigned to you.`);
+    } catch (err) {
+      console.error(err);
+      flash(
+        msgEl,
+        err?.message?.includes("duplicate")
+          ? "That facility already exists—select it from the checklist above."
+          : "Could not add facility. Make sure your account is approved.",
+        true
+      );
+    } finally {
+      btn.disabled = false;
+    }
   });
 }
 
-// ---------- Start Initialization ----------
-wireControls();
-setActive(el.tabs, "tab", state.tab, "aria-selected");
-setActive(el.filters, "filter", state.filter, "aria-pressed");
-fetchBoard({ first: true });
-subscribeToChanges();
-refreshLucide();
+// ---------- Profile Picture Upload ----------
+function renderAvatarPreview() {
+  const box = $("avatar-preview");
+  const remBtn = $("avatar-remove");
+  if (!box) return;
 
-setInterval(() => fetchBoard(), REFRESH_MS);
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") fetchBoard();
-});
+  if (myAvatar) {
+    const { data } = supabase.storage.from("avatars").getPublicUrl(myAvatar);
+    const img = new Image(84, 84);
+    img.src = `${data.publicUrl}?t=${Date.now()}`;
+    img.alt = "Your profile picture";
+    box.replaceChildren(img);
+    if (remBtn) remBtn.hidden = false;
+  } else {
+    const parts = (me?.full_name || "?").trim().split(/\s+/);
+    box.textContent = ((parts[0]?.[0] || "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+    if (remBtn) remBtn.hidden = true;
+  }
+}
+
+async function resizeToJpeg(file) {
+  const bmp = await createImageBitmap(file);
+  const size = 256;
+  const canvas = Object.assign(document.createElement("canvas"), { width: size, height: size });
+  const ctx = canvas.getContext("2d");
+  const min = Math.min(bmp.width, bmp.height);
+  const sx = (bmp.width - min) / 2;
+  const sy = (bmp.height - min) / 2;
+  ctx.drawImage(bmp, sx, sy, min, min, 0, 0, size, size);
+  bmp.close();
+  return new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+}
+
+function initAvatar() {
+  const input = $("avatar-input");
+  const remBtn = $("avatar-remove");
+  const msgEl = $("avatar-message");
+  if (!input || !myTeacher) return;
+
+  renderAvatarPreview();
+
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      flash(msgEl, "Please choose an image smaller than 2 MB.", true);
+      return;
+    }
+    msgEl.hidden = true;
+    try {
+      const blob = await resizeToJpeg(file);
+      const path = `${me.id}/avatar.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from("avatars")
+        .upload(path, blob, { upsert: true, contentType: "image/jpeg" });
+      if (upErr) throw upErr;
+
+      const { error: dbErr } = await supabase
+        .from("teachers")
+        .update({ avatar_path: path })
+        .eq("id", myTeacher.id);
+      if (dbErr) throw dbErr;
+
+      myAvatar = path;
+      renderAvatarPreview();
+      flash(msgEl, "Profile picture updated!");
+    } catch (err) {
+      console.error(err);
+      flash(msgEl, friendlyError(err), true);
+    } finally {
+      input.value = "";
+    }
+  });
+
+  if (remBtn) {
+    remBtn.addEventListener("click", async () => {
+      remBtn.disabled = true;
+      try {
+        if (myAvatar) await supabase.storage.from("avatars").remove([myAvatar]);
+        await supabase.from("teachers").update({ avatar_path: null }).eq("id", myTeacher.id);
+        myAvatar = null;
+        renderAvatarPreview();
+        flash(msgEl, "Profile picture removed.");
+      } catch (err) {
+        console.error(err);
+        flash(msgEl, friendlyError(err), true);
+      } finally {
+        remBtn.disabled = false;
+      }
+    });
+  }
+}
+
+// ---------- Boot ----------
+async function init() {
+  try {
+    me = await requireLogin();
+    if (!me) return;
+
+    myRole = me.role;
+    $("who").textContent = me.full_name;
+    $("logout").addEventListener("click", () => signOut());
+
+    if (!me.approved) {
+      $("pending").hidden = false;
+      return;
+    }
+
+    $("panel").hidden = false;
+    await loadItems();
+    initScheduleEditor();
+    await initProfile();
+    initAddFacility();
+    initAvatar();
+  } catch (err) {
+    console.error(err);
+    flash($("dash-message"), "Could not load your panel. Check your connection and refresh.", true);
+  }
+}
+
+init();
