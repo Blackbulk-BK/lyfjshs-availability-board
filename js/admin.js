@@ -13,7 +13,7 @@ import { requireLogin, signOut } from "./auth.js";
 import { ICONS, refreshLucide } from "./icons.js";
 
 const $ = (id) => document.getElementById(id);
-const CATEGORIES = { clinic: "Clinic", library: "Library", stockroom: "Stockroom", computer_lab: "Computer laboratory", other: "Other" };
+const CATEGORIES = { academic: "Academic Department", admin: "Administrative Office", other: "Department" };
 const dtFmt = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 const h = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };

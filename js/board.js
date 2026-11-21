@@ -1,10 +1,9 @@
 // js/board.js : Centralized public availability board (Luis Y. Ferrer Jr. Senior High School).
-// Students and staff can search and view real-time availability for both teachers and departments.
 import { supabase } from "./supabaseClient.js";
 import { getIcon, refreshLucide } from "./icons.js";
 
 const TZ = "Asia/Manila";
-const REFRESH_MS = 5 * 60 * 1000; // 5-minute safety refresh
+const REFRESH_MS = 5 * 60 * 1000;
 
 export const LABELS = {
   available: "Available",
@@ -14,12 +13,8 @@ export const LABELS = {
 };
 
 export const CATEGORIES = {
-  clinic: "Clinic",
-  library: "Library",
-  stockroom: "Stockroom / Supply",
-  computer_lab: "Computer Laboratory",
-  laboratory: "Laboratory",
-  office: "School Office",
+  academic: "Academic Department",
+  admin: "Administrative Office",
   other: "Department",
 };
 
@@ -29,6 +24,7 @@ const state = {
   query: "",
   teachers: [],
   departments: [],
+  expandedDepts: new Set(),
   hasData: false,
   loading: false,
   queued: false,
@@ -53,8 +49,7 @@ const el = {
   boardSummary: $("board-summary"),
 };
 
-// Date & Time formatters set to Philippine standard time (Asia/Manila)
-const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }); // YYYY-MM-DD
+const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ });
 const timeFmt = new Intl.DateTimeFormat("en-PH", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
 const shortDateFmt = new Intl.DateTimeFormat("en-PH", { timeZone: TZ, month: "short", day: "numeric" });
 const fullDateTimeFmt = new Intl.DateTimeFormat("en-PH", {
@@ -77,9 +72,6 @@ function initials(name) {
   return (first + last).toUpperCase();
 }
 
-/**
- * Returns clear, explicit date AND time for each availability record
- */
 function updatedText(item) {
   if (!item.updated_at) {
     return item.display_status === "not_updated"
@@ -112,7 +104,6 @@ function showMessage(text, withRetry = false) {
   if (el.retry) el.retry.hidden = !withRetry;
 }
 
-// Compute client-side fallback status if database view is unavailable
 function computeFallbackStatus(status, updatedAt) {
   if (status === "under_maintenance") return "under_maintenance";
   if (!status || !updatedAt) return "not_updated";
@@ -123,7 +114,7 @@ function computeFallbackStatus(status, updatedAt) {
 // ---------- Summary Counters & Timestamps ----------
 function updateSummaryStats() {
   const allItems = [...state.teachers, ...state.departments];
-  
+
   let available = 0, unavailable = 0, maintenance = 0, notUpdated = 0;
   let latestTimestamp = 0;
 
@@ -144,77 +135,134 @@ function updateSummaryStats() {
   if (el.countMaintenance) el.countMaintenance.textContent = String(maintenance);
   if (el.countNotUpdated) el.countNotUpdated.textContent = String(notUpdated);
 
-  // Update latest update timestamp banner
   if (el.latestUpdateTime) {
-    if (latestTimestamp > 0) {
-      el.latestUpdateTime.textContent = fullDateTimeFmt.format(new Date(latestTimestamp));
-    } else {
-      el.latestUpdateTime.textContent = "No recent records";
-    }
+    el.latestUpdateTime.textContent = latestTimestamp > 0
+      ? fullDateTimeFmt.format(new Date(latestTimestamp))
+      : "No recent records";
   }
 
-  // Update system sync banner
   if (el.systemSync) {
     el.systemSync.textContent = `${fullDateTimeFmt.format(new Date())} (Live)`;
   }
 }
 
 // ---------- Rendering ----------
-function avatarNode(item) {
+function avatarNode(item, size = 44) {
   const wrap = document.createElement("div");
   wrap.className = "avatar";
+  if (size !== 44) {
+    wrap.style.width = `${size}px`;
+    wrap.style.height = `${size}px`;
+    wrap.style.fontSize = "0.78rem";
+  }
+  const personName = item.name || item.full_name;
   if (item.avatar_path) {
     const { data } = supabase.storage.from("avatars").getPublicUrl(item.avatar_path);
-    const img = new Image(44, 44);
+    const img = new Image(size, size);
     img.loading = "lazy";
     img.alt = "";
     img.src = data.publicUrl;
-    img.onerror = () => { img.remove(); wrap.textContent = initials(item.name); };
+    img.onerror = () => { img.remove(); wrap.textContent = initials(personName); };
     wrap.append(img);
   } else {
-    wrap.textContent = initials(item.name);
+    wrap.textContent = initials(personName);
   }
   return wrap;
 }
 
-function departmentIconNode(category) {
+function departmentIconNode(deptName) {
   const wrap = document.createElement("div");
-  wrap.className = "avatar";
-  wrap.style.background = "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)";
-  wrap.style.color = "#7e22ce";
-  wrap.innerHTML = getIcon("building", "icon-svg");
+  wrap.className = "avatar dept-monogram";
+  wrap.textContent = (deptName || "DP").slice(0, 3).toUpperCase();
   return wrap;
+}
+
+function buildDeptRosterDrawer(dept) {
+  const teachers = Array.isArray(dept.assigned_teachers) ? dept.assigned_teachers : [];
+  const drawer = document.createElement("div");
+  drawer.className = "dept-roster-drawer";
+
+  const header = document.createElement("div");
+  header.className = "dept-roster-header";
+
+  const availCount = teachers.filter((t) => t.display_status === "available").length;
+  header.innerHTML = `
+    <span>Assigned Faculty (${teachers.length})</span>
+    <span class="dept-avail-summary">${availCount} Available Now</span>
+  `;
+  drawer.append(header);
+
+  if (!teachers.length) {
+    const empty = document.createElement("p");
+    empty.className = "dept-roster-empty";
+    empty.textContent = "No teachers are currently assigned to this department.";
+    drawer.append(empty);
+    return drawer;
+  }
+
+  const ul = document.createElement("ul");
+  ul.className = "dept-roster-list";
+
+  teachers.forEach((t) => {
+    const row = document.createElement("li");
+    row.className = `dept-teacher-item is-${t.display_status}`;
+
+    const left = document.createElement("div");
+    left.className = "dept-teacher-person";
+    left.append(avatarNode(t, 34));
+
+    const details = document.createElement("div");
+    details.className = "dept-teacher-details";
+    const tName = document.createElement("span");
+    tName.className = "dept-teacher-name";
+    tName.textContent = t.name;
+    const tRank = document.createElement("span");
+    tRank.className = "dept-teacher-rank";
+    tRank.textContent = t.rank_level || "Faculty Member";
+    details.append(tName, tRank);
+    left.append(details);
+
+    const miniPill = document.createElement("span");
+    miniPill.className = `pill mini status-${t.display_status}`;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    miniPill.append(dot, document.createTextNode(LABELS[t.display_status] ?? t.display_status));
+
+    row.append(left, miniPill);
+    ul.append(row);
+  });
+
+  drawer.append(ul);
+  return drawer;
 }
 
 function rowNode(item) {
+  const isTeacher = item.entity_type === "teacher";
+  const isExpanded = !isTeacher && (state.expandedDepts.has(item.id) || state.tab === "departments");
+
   const li = document.createElement("li");
-  li.className = "row";
+  li.className = `row ${!isTeacher ? "row-department" : ""} ${isExpanded ? "is-expanded" : ""}`;
   li.dataset.status = item.display_status;
   li.classList.add(`has-status-${item.display_status}`);
 
-  const isTeacher = item.entity_type === "teacher";
+  const mainLine = document.createElement("div");
+  mainLine.className = "row-main";
 
-  // Visual Avatar / Icon
   if (isTeacher) {
-    li.append(avatarNode(item));
+    mainLine.append(avatarNode(item));
   } else {
-    li.append(departmentIconNode(item.category));
+    mainLine.append(departmentIconNode(item.name));
   }
 
-  // Main Info
   const info = document.createElement("div");
   info.className = "info";
 
   const titleRow = document.createElement("div");
-  titleRow.style.display = "flex";
-  titleRow.style.alignItems = "center";
-  titleRow.style.flexWrap = "wrap";
-  titleRow.style.gap = "0.35rem";
+  titleRow.className = "title-row";
 
-  // Entity Badge (Teacher vs Department)
   const entityBadge = document.createElement("span");
   entityBadge.className = `entity-tag ${isTeacher ? "tag-teacher" : "tag-dept"}`;
-  entityBadge.textContent = isTeacher ? "Teacher" : (CATEGORIES[item.category] ?? "Department");
+  entityBadge.textContent = isTeacher ? "Faculty" : (item.name === "ADMIN" ? "Office" : "Department");
   titleRow.append(entityBadge);
 
   const name = document.createElement("span");
@@ -222,11 +270,20 @@ function rowNode(item) {
   name.textContent = item.name;
   titleRow.append(name);
 
-  // Secondary details (rank, handles, room location)
+  if (!isTeacher) {
+    const assigned = Array.isArray(item.assigned_teachers) ? item.assigned_teachers : [];
+    const availCount = assigned.filter((t) => t.display_status === "available").length;
+    const countChip = document.createElement("span");
+    countChip.className = `dept-count-chip ${availCount > 0 ? "has-available" : ""}`;
+    countChip.textContent = assigned.length
+      ? `${availCount}/${assigned.length} Teachers Available`
+      : "0 Teachers Assigned";
+    titleRow.append(countChip);
+  }
+
   const meta = document.createElement("div");
   meta.className = "meta";
 
-  // Clock icon for update timestamp
   const clockSpan = document.createElement("span");
   clockSpan.innerHTML = getIcon("clock", "icon-svg");
   clockSpan.style.display = "inline-flex";
@@ -239,32 +296,20 @@ function rowNode(item) {
 
   meta.append(clockSpan, timeTextNode);
 
-  // Sub-details (Building / Handlers / Subjects)
   const subDetails = document.createElement("div");
-  subDetails.style.display = "flex";
-  subDetails.style.flexWrap = "wrap";
-  subDetails.style.gap = "0.35rem";
-  subDetails.style.marginTop = "0.2rem";
+  subDetails.className = "sub-details";
 
   if (!isTeacher) {
-    if (item.building) {
-      const loc = document.createElement("span");
-      loc.className = "meta-tag";
-      loc.innerHTML = `${getIcon("mapPin", "icon-svg")} <strong>${item.building.toUpperCase()}</strong>${item.floor_level ? " &bull; " + item.floor_level : ""}`;
-      subDetails.append(loc);
-    }
-    if (item.handlers) {
-      const hnd = document.createElement("span");
-      hnd.className = "meta-tag";
-      hnd.innerHTML = `${getIcon("user", "icon-svg")} Coordinator: <strong>${item.handlers}</strong>`;
-      subDetails.append(hnd);
-    }
     if (item.open_time && item.close_time) {
       const hrs = document.createElement("span");
       hrs.className = "meta-tag";
       hrs.innerHTML = `${getIcon("clock", "icon-svg")} ${item.open_time.slice(0, 5)} - ${item.close_time.slice(0, 5)}`;
       subDetails.append(hrs);
     }
+    const hintTag = document.createElement("span");
+    hintTag.className = "meta-tag dept-toggle-hint";
+    hintTag.textContent = isExpanded ? "Hide assigned teachers" : "Click to view assigned teachers";
+    subDetails.append(hintTag);
   } else {
     if (item.rank_level) {
       const rk = document.createElement("span");
@@ -275,15 +320,20 @@ function rowNode(item) {
     if (item.handles) {
       const hnd = document.createElement("span");
       hnd.className = "meta-tag";
-      hnd.innerHTML = `${getIcon("building", "icon-svg")} Handles: ${item.handles}`;
+      hnd.innerHTML = `${getIcon("building", "icon-svg")} Dept: <strong>${item.handles}</strong>`;
       subDetails.append(hnd);
+    }
+    if (item.description) {
+      const desc = document.createElement("span");
+      desc.className = "meta-tag";
+      desc.textContent = item.description;
+      subDetails.append(desc);
     }
   }
 
   info.append(titleRow, meta);
   if (subDetails.children.length > 0) info.append(subDetails);
 
-  // Status Pill Badge
   const pill = document.createElement("span");
   pill.className = `pill status-${item.display_status}`;
   const dot = document.createElement("span");
@@ -291,7 +341,38 @@ function rowNode(item) {
   dot.setAttribute("aria-hidden", "true");
   pill.append(dot, document.createTextNode(LABELS[item.display_status] ?? item.display_status));
 
-  li.append(info, pill);
+  mainLine.append(info, pill);
+  li.append(mainLine);
+
+  // Interactive click on department card to toggle assigned teachers roster
+  if (!isTeacher) {
+    mainLine.style.cursor = "pointer";
+    mainLine.setAttribute("role", "button");
+    mainLine.setAttribute("tabindex", "0");
+    mainLine.setAttribute("aria-expanded", String(isExpanded));
+
+    const toggleDept = () => {
+      if (state.expandedDepts.has(item.id)) {
+        state.expandedDepts.delete(item.id);
+      } else {
+        state.expandedDepts.add(item.id);
+      }
+      render();
+    };
+
+    mainLine.addEventListener("click", toggleDept);
+    mainLine.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggleDept();
+      }
+    });
+
+    if (isExpanded) {
+      li.append(buildDeptRosterDrawer(item));
+    }
+  }
+
   return li;
 }
 
@@ -305,32 +386,26 @@ function renderSkeleton() {
   el.list.replaceChildren(...rows);
 }
 
-// Match search query against multiple fields: name, category, building, floor, handlers, rank
 function matchItem(item, q) {
   if (!q) return true;
   const name = norm(item.name || item.full_name || "");
-  const cat = norm(CATEGORIES[item.category] || item.category || "");
-  const building = norm(item.building || "");
-  const floor = norm(item.floor_level || "");
   const handlers = norm(item.handlers || "");
   const handles = norm(item.handles || "");
   const rank = norm(item.rank_level || "");
   const desc = norm(item.description || "");
 
-  return name.includes(q) ||
-         cat.includes(q) ||
-         building.includes(q) ||
-         floor.includes(q) ||
-         handlers.includes(q) ||
-         handles.includes(q) ||
-         rank.includes(q) ||
-         desc.includes(q);
+  return (
+    name.includes(q) ||
+    handlers.includes(q) ||
+    handles.includes(q) ||
+    rank.includes(q) ||
+    desc.includes(q)
+  );
 }
 
 function getActiveItems() {
   if (state.tab === "teachers") return state.teachers;
   if (state.tab === "departments") return state.departments;
-  // Centralized "all": combine teachers and departments
   return [...state.departments, ...state.teachers];
 }
 
@@ -353,7 +428,7 @@ function render() {
     if (items.length === 0) {
       const q = state.query.trim();
       if (q) {
-        showMessage(`No matches found for "${q}". Try searching by department name, teacher name, or room location.`);
+        showMessage(`No matches found for "${q}". Try searching by department (e.g. ICT, STEM/SCIENCE, ABM) or teacher name.`);
       } else {
         showMessage("No records match the selected filter.");
       }
@@ -372,14 +447,13 @@ async function fetchBoard({ first = false } = {}) {
   if (first) renderSkeleton();
 
   try {
-    // 1) Fetch teachers from view or fallback to base table
     let teachersData = [];
     try {
       const t = await supabase.from("teachers_board").select("*").order("name");
       if (t.error) throw t.error;
       teachersData = (t.data ?? []).map((r) => ({ ...r, entity_type: "teacher" }));
     } catch (err) {
-      console.warn("teachers_board view fallback, querying base table:", err);
+      console.warn("teachers_board view fallback:", err);
       const fallback = await supabase
         .from("teachers")
         .select("id, full_name, status, updated_at, avatar_path, rank_level, description")
@@ -394,23 +468,23 @@ async function fetchBoard({ first = false } = {}) {
       }));
     }
 
-    // 2) Fetch departments from view or fallback to base table
     let departmentsData = [];
     try {
       const d = await supabase.from("departments_board").select("*").order("name");
       if (d.error) throw d.error;
       departmentsData = (d.data ?? []).map((r) => ({ ...r, entity_type: "department" }));
     } catch (err) {
-      console.warn("departments_board view fallback, querying base table:", err);
+      console.warn("departments_board view fallback:", err);
       const fallback = await supabase
         .from("departments")
-        .select("id, name, category, status, updated_at, building, floor_level, open_time, close_time")
+        .select("id, name, category, status, updated_at, open_time, close_time")
         .eq("is_active", true)
         .order("name");
       if (fallback.error) throw fallback.error;
       departmentsData = (fallback.data ?? []).map((r) => ({
         ...r,
         display_status: computeFallbackStatus(r.status, r.updated_at),
+        assigned_teachers: [],
         entity_type: "department",
       }));
     }
@@ -457,6 +531,7 @@ function subscribeToChanges() {
     .channel("board-centralized")
     .on("postgres_changes", { event: "*", schema: "public", table: "teachers" }, scheduleRefresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "department_staff" }, scheduleRefresh)
     .subscribe();
 }
 
@@ -469,7 +544,6 @@ function setActive(container, attr, value, ariaAttr) {
 }
 
 function wireControls() {
-  // Live search input
   if (el.search) {
     el.search.addEventListener("input", () => {
       state.query = el.search.value;
@@ -477,18 +551,20 @@ function wireControls() {
     });
   }
 
-  // Centralized Tabs (All, Teachers, Departments)
   if (el.tabs) {
     el.tabs.addEventListener("click", (e) => {
       const b = e.target.closest("button[data-tab]");
       if (!b) return;
       state.tab = b.dataset.tab;
+      // Auto-expand all departments when switching directly to the Departments tab
+      if (state.tab === "departments") {
+        state.departments.forEach((d) => state.expandedDepts.add(d.id));
+      }
       setActive(el.tabs, "tab", state.tab, "aria-selected");
       render();
     });
   }
 
-  // Status Filter Buttons
   if (el.filters) {
     el.filters.addEventListener("click", (e) => {
       const b = e.target.closest("button[data-filter]");
@@ -500,13 +576,11 @@ function wireControls() {
     });
   }
 
-  // Clickable Summary Stat Chips
   if (el.boardSummary) {
     el.boardSummary.addEventListener("click", (e) => {
       const chip = e.target.closest("[data-stat-filter]");
       if (!chip) return;
       const targetFilter = chip.dataset.statFilter;
-      // Toggle or set filter
       state.filter = state.filter === targetFilter ? "all" : targetFilter;
       setActive(el.filters, "filter", state.filter, "aria-pressed");
       updateStatChipHighlight();

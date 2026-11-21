@@ -1,16 +1,27 @@
 // js/auth.js : login helpers, the sign-up form, and shared form helpers.
-//
-// login.html needs these ids:
-//   #login-form (#login-email, #login-password)
-//   #signup-form (#signup-name, #signup-email, #signup-password, #signup-rank,
-//                 #signup-description, #signup-departments)
-//   #tab-login, #tab-signup (buttons)   #auth-message (p)
 import { supabase } from "./supabaseClient.js";
 
 export const RANKS = {
-  "Teacher": ["Teacher I", "Teacher II", "Teacher III", "Teacher IV", "Teacher V", "Teacher VI", "Teacher VII",
-    "Master Teacher I", "Master Teacher II", "Master Teacher III", "Master Teacher IV", "Master Teacher V"],
-  "School Administration Track": ["School Principal I", "School Principal II", "School Principal III", "School Principal IV"],
+  "Teacher Track": [
+    "Teacher I", "Teacher II", "Teacher III", "Teacher IV",
+    "Teacher V", "Teacher VI", "Teacher VII",
+    "Master Teacher I", "Master Teacher II", "Master Teacher III",
+    "Master Teacher IV", "Master Teacher V",
+  ],
+  "Special Science Track": [
+    "Special Science Teacher I",
+    "Special Science Teacher II",
+    "Special Science Teacher III",
+    "Special Science Teacher IV",
+    "Special Science Teacher V",
+  ],
+  "Administration Track": [
+    "School Principal I",
+    "School Principal II",
+    "School Principal III",
+    "School Principal IV",
+    "ADMIN",
+  ],
 };
 
 const FRIENDLY = [
@@ -53,8 +64,10 @@ export async function signOut() {
 
 // ---------- shared form helpers (also used by dashboard.js) ----------
 export function fillRankSelect(select, selected = "") {
-  const opt = (value, text, sel = false) => Object.assign(document.createElement("option"), { value, textContent: text, selected: sel });
-  select.replaceChildren(opt("", "Choose your rank"));
+  if (!select) return;
+  const opt = (value, text, sel = false) =>
+    Object.assign(document.createElement("option"), { value, textContent: text, selected: sel });
+  select.replaceChildren(opt("", "Choose your rank / role"));
   for (const [group, list] of Object.entries(RANKS)) {
     const og = Object.assign(document.createElement("optgroup"), { label: group });
     list.forEach((r) => og.append(opt(r, r, r === selected)));
@@ -63,40 +76,48 @@ export function fillRankSelect(select, selected = "") {
 }
 
 export async function fetchDepartments() {
-  const { data, error } = await supabase.from("departments_board")
-    .select("id, name, building, floor_level")
-    .order("building").order("floor_level").order("name");
+  const { data, error } = await supabase
+    .from("departments_board")
+    .select("id, name, category")
+    .order("name");
   if (error) throw error;
   return data;
 }
 
 export function renderDepartmentChecks(container, depts, selected = new Set()) {
-  const groups = new Map();
-  for (const d of depts) {
-    const key = [d.building, d.floor_level].filter(Boolean).join(", ") || "Other";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(d);
-  }
-  container.replaceChildren(...[...groups].map(([title, list]) => {
-    const fs = Object.assign(document.createElement("fieldset"), { className: "group" });
-    fs.append(Object.assign(document.createElement("legend"), { textContent: title }));
-    list.forEach((d) => {
-      const lab = Object.assign(document.createElement("label"), { className: "check" });
-      const cb = Object.assign(document.createElement("input"), { type: "checkbox", value: d.id, checked: selected.has(d.id) });
-      lab.append(cb, d.name);
-      fs.append(lab);
+  if (!container) return;
+  const grid = Object.assign(document.createElement("div"), { className: "dept-pill-grid" });
+
+  depts.forEach((d) => {
+    const lab = Object.assign(document.createElement("label"), { className: "dept-pill-option" });
+    const cb = Object.assign(document.createElement("input"), {
+      type: "checkbox",
+      value: d.id,
+      checked: selected.has(d.id),
     });
-    return fs;
-  }));
+    const badge = Object.assign(document.createElement("span"), {
+      className: "dept-pill-label",
+      textContent: d.name,
+    });
+    lab.append(cb, badge);
+    grid.append(lab);
+  });
+
+  container.replaceChildren(grid);
 }
 
-export const checkedIds = (container) => [...container.querySelectorAll("input:checked")].map((i) => i.value);
+export const checkedIds = (container) =>
+  container ? [...container.querySelectorAll("input:checked")].map((i) => i.value) : [];
 
 // ---------- login page ----------
 function initLoginPage() {
   const $ = (id) => document.getElementById(id);
   const loginForm = $("login-form"), signupForm = $("signup-form"), msg = $("auth-message");
-  const say = (text, bad = false) => { msg.textContent = text; msg.dataset.state = bad ? "error" : "ok"; msg.hidden = !text; };
+  const say = (text, bad = false) => {
+    msg.textContent = text;
+    msg.dataset.state = bad ? "error" : "ok";
+    msg.hidden = !text;
+  };
 
   function showTab(which) {
     loginForm.hidden = which !== "login";
@@ -130,7 +151,8 @@ function initLoginPage() {
     e.preventDefault();
     guarded(loginForm, async () => {
       const { error } = await supabase.auth.signInWithPassword({
-        email: $("login-email").value.trim(), password: $("login-password").value,
+        email: $("login-email").value.trim(),
+        password: $("login-password").value,
       });
       if (error) throw error;
       location.replace("dashboard.html");
@@ -147,10 +169,12 @@ function initLoginPage() {
     if (password.length < 8) return say("Use a password with at least 8 characters.", true);
     guarded(signupForm, async () => {
       const { error } = await supabase.auth.signUp({
-        email: $("signup-email").value.trim(), password,
+        email: $("signup-email").value.trim(),
+        password,
         options: {
           data: {
-            full_name, rank_level,
+            full_name,
+            rank_level,
             description: $("signup-description").value.trim(),
             departments: checkedIds($("signup-departments")),
           },
