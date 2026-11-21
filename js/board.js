@@ -94,17 +94,28 @@ function getTodayKey() {
 
 function getScheduleSummary(schedule) {
   if (!schedule || typeof schedule !== "object") return null;
-  const activeDays = DAYS.filter((d) => schedule[d.key]?.start && schedule[d.key]?.end);
-  if (!activeDays.length) return null;
 
-  const todayKey = getTodayKey();
-  const todaySlot = schedule[todayKey];
-  if (todaySlot?.start && todaySlot?.end) {
-    return `Today (${todayKey}): ${format12Hour(todaySlot.start)} – ${format12Hour(todaySlot.end)}`;
-  }
-  const first = activeDays[0];
-  const slot = schedule[first.key];
-  return `${first.key}: ${format12Hour(slot.start)} – ${format12Hour(slot.end)}`;
+  const blocks = [];
+  DAYS.forEach((d, idx) => {
+    const slot = schedule[d.key];
+    if (!slot?.start || !slot?.end) return;
+    const prev = blocks[blocks.length - 1];
+    if (prev && prev.start === slot.start && prev.end === slot.end && prev.lastIdx === idx - 1) {
+      prev.endKey = d.key;
+      prev.lastIdx = idx;
+    } else {
+      blocks.push({ startKey: d.key, endKey: d.key, lastIdx: idx, start: slot.start, end: slot.end });
+    }
+  });
+
+  if (!blocks.length) return null;
+
+  return blocks
+    .map((b) => {
+      const range = b.startKey === b.endKey ? b.startKey : `${b.startKey}–${b.endKey}`;
+      return `${range}: ${format12Hour(b.start)} – ${format12Hour(b.end)}`;
+    })
+    .join(" • ");
 }
 
 function updatedText(item) {

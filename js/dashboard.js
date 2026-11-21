@@ -1,5 +1,5 @@
 // js/dashboard.js : Teacher panel — update availability, unavailability reason,
-// weekly schedule, department/facility assignments, delegates, and profile photo.
+// weekly schedule, department/facility assignments, and profile photo.
 import { supabase } from "./supabaseClient.js";
 import {
   requireLogin,
@@ -28,12 +28,12 @@ const UNAVAIL_TAGS = [
 ];
 
 const DAYS = [
-  { key: "Mon", label: "Monday" },
-  { key: "Tue", label: "Tuesday" },
-  { key: "Wed", label: "Wednesday" },
-  { key: "Thu", label: "Thursday" },
-  { key: "Fri", label: "Friday" },
-  { key: "Sat", label: "Saturday" },
+  { key: "Mon", label: "Monday", idx: 0 },
+  { key: "Tue", label: "Tuesday", idx: 1 },
+  { key: "Wed", label: "Wednesday", idx: 2 },
+  { key: "Thu", label: "Thursday", idx: 3 },
+  { key: "Fri", label: "Friday", idx: 4 },
+  { key: "Sat", label: "Saturday", idx: 5 },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -43,14 +43,46 @@ const timeFmt = new Intl.DateTimeFormat("en-PH", { timeZone: TZ, hour: "numeric"
 let me = null;
 let myTeacher = null;
 let myAvatar = null;
-let myRole = "teacher";
-let assignablePool = [];
 
 function flash(el, text, bad = false) {
   if (!el) return;
   el.textContent = text;
   el.dataset.state = bad ? "error" : "ok";
   el.hidden = !text;
+}
+
+function format12Hour(hhmm) {
+  if (!hhmm || !hhmm.includes(":")) return hhmm || "";
+  const [hStr, mStr] = hhmm.split(":");
+  let h = parseInt(hStr, 10);
+  const suffix = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${mStr} ${suffix}`;
+}
+
+function groupScheduleBlocks(schedule) {
+  const blocks = [];
+  for (const d of DAYS) {
+    const slot = schedule?.[d.key];
+    if (!slot?.start || !slot?.end) continue;
+    const prev = blocks[blocks.length - 1];
+    if (prev && prev.start === slot.start && prev.end === slot.end && prev.lastIdx === d.idx - 1) {
+      prev.endKey = d.key;
+      prev.lastIdx = d.idx;
+    } else {
+      blocks.push({
+        startKey: d.key,
+        endKey: d.key,
+        lastIdx: d.idx,
+        start: slot.start,
+        end: slot.end,
+      });
+    }
+  }
+  return blocks.map((b) => {
+    const dayRange = b.startKey === b.endKey ? b.startKey : `${b.startKey}–${b.endKey}`;
+    return `${dayRange}: ${format12Hour(b.start)} – ${format12Hour(b.end)}`;
+  });
 }
 
 function displayStatus(row) {
@@ -68,6 +100,69 @@ function updatedLabel(row) {
   const d = new Date(row.updated_at);
   if (st === "not_updated") return `Not updated today (last: ${timeFmt.format(d)})`;
   return `Updated today at ${timeFmt.format(d)}`;
+}
+
+// Fetch the teacher row linked via profiles.teacher_id
+async function fetchLinkedTeacher() {
+  if (!me) return null;
+
+  const { data: prof, error: profErr } = await supabase
+    .from("profiles")
+    .select("teacher_id")
+    .eq("id", me.id)
+    .single();
+
+  if (profErr || !prof?.teacher_id) return null;
+
+  let { data: ownT, error: ownErr } = await supabase
+    .from("teachers")
+    .select("id, full_name, status, updated_at, rank_level, description, avatar_path, unavailable_reason, schedule")
+    .eq("id", prof.teacher_id)
+    .maybeSingle();
+
+  if (ownErr) {
+    console.warn("Full teacher query fallback:", ownErr.message);
+    const fb = await supabase
+      .from("teachers")
+      .select("id, full_name, status, updated_at, rank_level, description, avatar_path")
+      .eq("id", prof.teacher_id)
+      .maybeSingle();
+    ownT = fb.data;
+  }
+
+  return ownT || null;
+}
+
+// Ensure logged-in user has a linked row in public.teachers via profiles.teacher_id
+async function ensureTeacherRecord() {
+  if (myTeacher) return myTeacher;
+
+  const existing = await fetchLinkedTeacher();
+  if (existing) {
+    myTeacher = existing;
+    return myTeacher;
+  }
+
+  const { data: created, error } = await supabase
+    .from("teachers")
+    .insert({
+      full_name: me.full_name,
+      is_active: true,
+    })
+    .select("id, full_name, status, updated_at, rank_level, description, avatar_path")
+    .single();
+
+  if (error) throw error;
+
+  const { error: linkErr } = await supabase
+    .from("profiles")
+    .update({ teacher_id: created.id })
+    .eq("id", me.id);
+
+  if (linkErr) throw linkErr;
+
+  myTeacher = created;
+  return myTeacher;
 }
 
 // ---------- Teacher Unavailability Reason Editor ----------
@@ -137,7 +232,7 @@ function buildUnavailEditor(row, statusBadge, metaLine) {
       setTimeout(() => { note.textContent = ""; }, 2500);
     } catch (err) {
       console.error(err);
-      note.textContent = friendlyError(err);
+      note.textContent = err?.message || friendlyError(err);
     } finally {
       saveBtn.disabled = false;
     }
@@ -152,7 +247,6 @@ function buildUnavailEditor(row, statusBadge, metaLine) {
 function itemCard(row) {
   const isTeacher = row.kind === "teacher";
   const isFacility = row.kind === "department" && row.category === "facility";
-  const isDept = row.kind === "department" && !isFacility;
 
   const li = document.createElement("li");
   li.className = "item";
@@ -188,10 +282,6 @@ function itemCard(row) {
   pill.className = `pill status-${st}`;
   pill.innerHTML = `<span class="dot"></span>${LABELS[st]}`;
 
-  // Status Buttons:
-  // - Teachers: Available, Unavailable (opens reason box)
-  // - Departments: Available, Unavailable (NO Under Maintenance!)
-  // - Facilities: Available, Unavailable, Under Maintenance
   const statuses = isFacility
     ? ["available", "unavailable", "under_maintenance"]
     : ["available", "unavailable"];
@@ -247,7 +337,7 @@ function itemCard(row) {
             : updatedLabel(row);
       } catch (err) {
         console.error(err);
-        flash($("dash-message"), friendlyError(err), true);
+        flash($("dash-message"), err?.message || friendlyError(err), true);
       } finally {
         actions.querySelectorAll("button").forEach((b) => { b.disabled = false; });
       }
@@ -262,7 +352,6 @@ function itemCard(row) {
     li.append(unavailBox);
   }
 
-  // Operating Hours editor for Facilities & Departments
   if (!isTeacher) {
     const hours = document.createElement("div");
     hours.className = "hours";
@@ -301,7 +390,7 @@ function itemCard(row) {
         setTimeout(() => { saveHrs.textContent = "Save Hours"; }, 2000);
       } catch (err) {
         console.error(err);
-        flash($("dash-message"), friendlyError(err), true);
+        flash($("dash-message"), err?.message || friendlyError(err), true);
       } finally {
         saveHrs.disabled = false;
       }
@@ -320,13 +409,8 @@ async function loadItems() {
 
   const rows = [];
 
-  // 1) Own teacher record
-  const { data: ownT } = await supabase
-    .from("teachers")
-    .select("id, full_name, status, updated_at, rank_level, description, avatar_path, unavailable_reason, schedule")
-    .eq("user_id", me.id)
-    .maybeSingle();
-
+  // 1) Own teacher record linked via profiles.teacher_id
+  const ownT = await fetchLinkedTeacher();
   if (ownT) {
     myTeacher = ownT;
     myAvatar = ownT.avatar_path;
@@ -336,7 +420,7 @@ async function loadItems() {
   // 2) Delegated teachers
   const { data: delT } = await supabase
     .from("status_managers")
-    .select("teachers(id, full_name, status, updated_at, unavailable_reason)")
+    .select("teachers(id, full_name, status, updated_at)")
     .eq("manager_id", me.id)
     .not("teacher_id", "is", null);
 
@@ -373,16 +457,57 @@ async function loadItems() {
   list.replaceChildren(...rows.map(itemCard));
 }
 
-// ---------- Weekly School Schedule Editor ----------
+// ---------- Multi-Shift Weekly School Schedule Editor ----------
 function initScheduleEditor() {
   const container = $("schedule-days");
   const form = $("schedule-form");
   const msgEl = $("schedule-message");
-  const applyWeekdaysBtn = $("apply-weekdays");
-  if (!container || !form || !myTeacher) return;
+  const batchPills = $("batch-day-pills");
+  const applyBtn = $("apply-selected-days");
+  const clearBtn = $("clear-selected-days");
+  const batchFeedback = $("batch-feedback");
+  const summaryBar = $("schedule-summary-preview");
+  if (!container || !form) return;
 
-  const saved = myTeacher.schedule && typeof myTeacher.schedule === "object" ? myTeacher.schedule : {};
+  const saved = myTeacher?.schedule && typeof myTeacher.schedule === "object" ? myTeacher.schedule : {};
   const controls = {};
+
+  function collectDraftSchedule() {
+    const draft = {};
+    for (const d of DAYS) {
+      const { cb, startIn, endIn } = controls[d.key];
+      if (cb.checked && startIn.value && endIn.value && endIn.value > startIn.value) {
+        draft[d.key] = { start: startIn.value, end: endIn.value };
+      }
+    }
+    return draft;
+  }
+
+  function refreshRowAndSummary() {
+    for (const d of DAYS) {
+      const { cb, startIn, endIn, badge } = controls[d.key];
+      if (!cb.checked) {
+        badge.textContent = "Off / No Schedule";
+        badge.className = "sched-live-badge is-off";
+      } else if (startIn.value && endIn.value && endIn.value > startIn.value) {
+        badge.textContent = `${format12Hour(startIn.value)} – ${format12Hour(endIn.value)}`;
+        badge.className = "sched-live-badge is-on";
+      } else {
+        badge.textContent = "Invalid time range";
+        badge.className = "sched-live-badge is-err";
+      }
+    }
+
+    if (summaryBar) {
+      const groups = groupScheduleBlocks(collectDraftSchedule());
+      if (groups.length) {
+        summaryBar.innerHTML = `<strong>Schedule Preview:</strong> <span>${groups.join(" &bull; ")}</span>`;
+        summaryBar.hidden = false;
+      } else {
+        summaryBar.hidden = true;
+      }
+    }
+  }
 
   container.replaceChildren();
   DAYS.forEach((d) => {
@@ -418,33 +543,101 @@ function initScheduleEditor() {
     endIn.value = slot.end || "15:00";
     endIn.disabled = !isActive;
 
+    const badge = document.createElement("span");
+    badge.className = "sched-live-badge";
+
     cb.addEventListener("change", () => {
       startIn.disabled = !cb.checked;
       endIn.disabled = !cb.checked;
+      refreshRowAndSummary();
     });
+    startIn.addEventListener("input", refreshRowAndSummary);
+    endIn.addEventListener("input", refreshRowAndSummary);
 
-    times.append(startIn, toTxt, endIn);
+    times.append(startIn, toTxt, endIn, badge);
     row.append(dayLabel, times);
     container.append(row);
 
-    controls[d.key] = { cb, startIn, endIn };
+    controls[d.key] = { cb, startIn, endIn, row, badge };
   });
 
-  if (applyWeekdaysBtn) {
-    applyWeekdaysBtn.addEventListener("click", () => {
-      const sVal = $("quick-start")?.value || "06:00";
-      const eVal = $("quick-end")?.value || "15:00";
-      ["Mon", "Tue", "Wed", "Thu", "Fri"].forEach((k) => {
-        if (controls[k]) {
-          controls[k].cb.checked = true;
-          controls[k].startIn.disabled = false;
-          controls[k].endIn.disabled = false;
-          controls[k].startIn.value = sVal;
-          controls[k].endIn.value = eVal;
-        }
+  form.querySelectorAll("[data-preset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const wanted = new Set(btn.dataset.preset.split(",").filter(Boolean));
+      batchPills?.querySelectorAll("input[type=checkbox]").forEach((box) => {
+        box.checked = wanted.has(box.value);
       });
     });
+  });
+
+  const getBatchSelectedDays = () =>
+    batchPills
+      ? [...batchPills.querySelectorAll("input[type=checkbox]:checked")].map((i) => i.value)
+      : [];
+
+  if (applyBtn) {
+    applyBtn.addEventListener("click", () => {
+      const selectedDays = getBatchSelectedDays();
+      const sVal = $("quick-start")?.value;
+      const eVal = $("quick-end")?.value;
+
+      if (!selectedDays.length) {
+        batchFeedback.textContent = "Select at least one day pill above first (e.g. Mon, Tue, Wed).";
+        batchFeedback.hidden = false;
+        return;
+      }
+      if (!sVal || !eVal || eVal <= sVal) {
+        batchFeedback.textContent = "Choose a valid start and end time (end time must be after start time).";
+        batchFeedback.hidden = false;
+        return;
+      }
+
+      selectedDays.forEach((key) => {
+        const c = controls[key];
+        if (!c) return;
+        c.cb.checked = true;
+        c.startIn.disabled = false;
+        c.endIn.disabled = false;
+        c.startIn.value = sVal;
+        c.endIn.value = eVal;
+        c.row.classList.remove("sched-flash");
+        void c.row.offsetWidth;
+        c.row.classList.add("sched-flash");
+      });
+
+      batchPills.querySelectorAll("input[type=checkbox]").forEach((box) => { box.checked = false; });
+
+      refreshRowAndSummary();
+      batchFeedback.textContent = `Applied ${format12Hour(sVal)} – ${format12Hour(eVal)} to ${selectedDays.join(", ")}. Select more days for another shift or click "Save School Schedule".`;
+      batchFeedback.hidden = false;
+    });
   }
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      const selectedDays = getBatchSelectedDays();
+      if (!selectedDays.length) {
+        batchFeedback.textContent = "Select the days you want to mark as Off first.";
+        batchFeedback.hidden = false;
+        return;
+      }
+
+      selectedDays.forEach((key) => {
+        const c = controls[key];
+        if (!c) return;
+        c.cb.checked = false;
+        c.startIn.disabled = true;
+        c.endIn.disabled = true;
+      });
+
+      batchPills.querySelectorAll("input[type=checkbox]").forEach((box) => { box.checked = false; });
+      refreshRowAndSummary();
+      batchFeedback.textContent = `Marked ${selectedDays.join(", ")} as Off. Click "Save School Schedule" to publish.`;
+      batchFeedback.hidden = false;
+    });
+  }
+
+  refreshRowAndSummary();
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -453,6 +646,7 @@ function initScheduleEditor() {
     msgEl.hidden = true;
 
     try {
+      const teacher = await ensureTeacherRecord();
       const nextSchedule = {};
       for (const d of DAYS) {
         const { cb, startIn, endIn } = controls[d.key];
@@ -470,14 +664,20 @@ function initScheduleEditor() {
       const { error } = await supabase
         .from("teachers")
         .update({ schedule: nextSchedule })
-        .eq("id", myTeacher.id);
+        .eq("id", teacher.id);
       if (error) throw error;
 
-      myTeacher.schedule = nextSchedule;
-      flash(msgEl, "School schedule updated! Students can now view your hours on the board.");
+      teacher.schedule = nextSchedule;
+      await loadItems();
+      flash(msgEl, "School schedule saved! Students can now view all your shift hours on the board.");
     } catch (err) {
       console.error(err);
-      flash(msgEl, err?.message || friendlyError(err), true);
+      const raw = err?.message || "";
+      if (raw.includes("schedule") && raw.includes("schema cache")) {
+        flash(msgEl, "Database column 'schedule' is missing—run sql/migration_08_schedules_unavail_reason_and_fixes.sql in Supabase first.", true);
+      } else {
+        flash(msgEl, raw || friendlyError(err), true);
+      }
     } finally {
       btn.disabled = false;
     }
@@ -488,18 +688,33 @@ function initScheduleEditor() {
 async function initProfile() {
   const form = $("profile-form");
   const msgEl = $("profile-message");
-  if (!form || !myTeacher) return;
+  const deptContainer = $("profile-departments");
+  if (!form) return;
 
-  fillRankSelect($("profile-rank"), myTeacher.rank_level || "");
-  $("profile-description").value = myTeacher.description || "";
+  fillRankSelect($("profile-rank"), myTeacher?.rank_level || "");
+  if ($("profile-description")) {
+    $("profile-description").value = myTeacher?.description || "";
+  }
 
-  const [allDepts, { data: myLinks }] = await Promise.all([
-    fetchDepartments(),
-    supabase.from("department_staff").select("department_id").eq("teacher_id", myTeacher.id),
-  ]);
+  try {
+    const allDepts = await fetchDepartments();
+    let selectedSet = new Set();
 
-  const selectedSet = new Set((myLinks ?? []).map((r) => r.department_id));
-  renderDepartmentChecks($("profile-departments"), allDepts, selectedSet);
+    if (myTeacher?.id) {
+      const { data: myLinks } = await supabase
+        .from("department_staff")
+        .select("department_id")
+        .eq("teacher_id", myTeacher.id);
+      selectedSet = new Set((myLinks ?? []).map((r) => r.department_id));
+    }
+
+    renderDepartmentChecks(deptContainer, allDepts, selectedSet);
+  } catch (err) {
+    console.error("Failed to load departments/facilities:", err);
+    if (deptContainer) {
+      deptContainer.textContent = "Could not load departments and facilities. Check your database connection.";
+    }
+  }
 
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -508,31 +723,31 @@ async function initProfile() {
     msgEl.hidden = true;
 
     try {
+      const teacher = await ensureTeacherRecord();
       const rank_level = $("profile-rank").value || null;
       const description = $("profile-description").value.trim() || null;
-      const chosenIds = checkedIds($("profile-departments"));
+      const chosenIds = checkedIds(deptContainer);
 
       const { error: upErr } = await supabase
         .from("teachers")
         .update({ rank_level, description })
-        .eq("id", myTeacher.id);
+        .eq("id", teacher.id);
       if (upErr) throw upErr;
 
-      // Sync department_staff
-      await supabase.from("department_staff").delete().eq("teacher_id", myTeacher.id);
+      await supabase.from("department_staff").delete().eq("teacher_id", teacher.id);
       if (chosenIds.length) {
-        const rows = chosenIds.map((department_id) => ({ teacher_id: myTeacher.id, department_id }));
+        const rows = chosenIds.map((department_id) => ({ teacher_id: teacher.id, department_id }));
         const { error: insErr } = await supabase.from("department_staff").insert(rows);
         if (insErr) throw insErr;
       }
 
-      myTeacher.rank_level = rank_level;
-      myTeacher.description = description;
+      teacher.rank_level = rank_level;
+      teacher.description = description;
       await loadItems();
       flash(msgEl, "Profile, department, and facility assignments saved.");
     } catch (err) {
       console.error(err);
-      flash(msgEl, friendlyError(err), true);
+      flash(msgEl, err?.message || friendlyError(err), true);
     } finally {
       btn.disabled = false;
     }
@@ -543,7 +758,7 @@ async function initProfile() {
 function initAddFacility() {
   const form = $("add-facility-form");
   const msgEl = $("add-facility-message");
-  if (!form || !myTeacher) return;
+  if (!form) return;
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -557,6 +772,7 @@ function initAddFacility() {
     msgEl.hidden = true;
 
     try {
+      const teacher = await ensureTeacherRecord();
       const { data: created, error: insErr } = await supabase
         .from("departments")
         .insert({ name, category: "facility", building, floor_level, is_active: true })
@@ -566,7 +782,7 @@ function initAddFacility() {
 
       const { error: linkErr } = await supabase
         .from("department_staff")
-        .insert({ teacher_id: myTeacher.id, department_id: created.id });
+        .insert({ teacher_id: teacher.id, department_id: created.id });
       if (linkErr) throw linkErr;
 
       form.reset();
@@ -579,7 +795,7 @@ function initAddFacility() {
         msgEl,
         err?.message?.includes("duplicate")
           ? "That facility already exists—select it from the checklist above."
-          : "Could not add facility. Make sure your account is approved.",
+          : err?.message || "Could not add facility. Make sure your account is approved.",
         true
       );
     } finally {
@@ -625,7 +841,7 @@ function initAvatar() {
   const input = $("avatar-input");
   const remBtn = $("avatar-remove");
   const msgEl = $("avatar-message");
-  if (!input || !myTeacher) return;
+  if (!input) return;
 
   renderAvatarPreview();
 
@@ -638,6 +854,7 @@ function initAvatar() {
     }
     msgEl.hidden = true;
     try {
+      const teacher = await ensureTeacherRecord();
       const blob = await resizeToJpeg(file);
       const path = `${me.id}/avatar.jpg`;
       const { error: upErr } = await supabase.storage
@@ -648,7 +865,7 @@ function initAvatar() {
       const { error: dbErr } = await supabase
         .from("teachers")
         .update({ avatar_path: path })
-        .eq("id", myTeacher.id);
+        .eq("id", teacher.id);
       if (dbErr) throw dbErr;
 
       myAvatar = path;
@@ -656,7 +873,7 @@ function initAvatar() {
       flash(msgEl, "Profile picture updated!");
     } catch (err) {
       console.error(err);
-      flash(msgEl, friendlyError(err), true);
+      flash(msgEl, err?.message || friendlyError(err), true);
     } finally {
       input.value = "";
     }
@@ -666,14 +883,15 @@ function initAvatar() {
     remBtn.addEventListener("click", async () => {
       remBtn.disabled = true;
       try {
+        const teacher = await ensureTeacherRecord();
         if (myAvatar) await supabase.storage.from("avatars").remove([myAvatar]);
-        await supabase.from("teachers").update({ avatar_path: null }).eq("id", myTeacher.id);
+        await supabase.from("teachers").update({ avatar_path: null }).eq("id", teacher.id);
         myAvatar = null;
         renderAvatarPreview();
         flash(msgEl, "Profile picture removed.");
       } catch (err) {
         console.error(err);
-        flash(msgEl, friendlyError(err), true);
+        flash(msgEl, err?.message || friendlyError(err), true);
       } finally {
         remBtn.disabled = false;
       }
@@ -687,7 +905,6 @@ async function init() {
     me = await requireLogin();
     if (!me) return;
 
-    myRole = me.role;
     $("who").textContent = me.full_name;
     $("logout").addEventListener("click", () => signOut());
 
@@ -708,4 +925,4 @@ async function init() {
   }
 }
 
-init(); 
+init();

@@ -1,176 +1,200 @@
--- =====================================================================
--- Migration 08: Teacher Weekly Schedule, Unavailability Reason,
--- Single-Department Enforcement, and No Under Maintenance on Departments
--- Run in Supabase SQL Editor. Safe to re-run.
--- =====================================================================
+-- 1. Ensure schedule & unavailable_reason columns exist on public.teachers
+ALTER TABLE public.teachers
+  ADD COLUMN IF NOT EXISTS unavailable_reason text,
+  ADD COLUMN IF NOT EXISTS schedule jsonb NOT NULL DEFAULT '{}'::jsonb;
 
--- 1) Add schedule (JSONB) and unavailable_reason (TEXT) to teachers
-alter table public.teachers
-  add column if not exists unavailable_reason text,
-  add column if not exists schedule jsonb not null default '{}'::jsonb;
+-- 2. Add teacher_id to public.profiles matching the exact data type of teachers.id
+DO $$
+DECLARE
+  v_tid_type text;
+BEGIN
+  SELECT format_type(a.atttypid, a.atttypmod)
+    INTO v_tid_type
+    FROM pg_attribute a
+    JOIN pg_class c ON a.attrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+   WHERE n.nspname = 'public'
+     AND c.relname = 'teachers'
+     AND a.attname = 'id'
+     AND a.attnum > 0
+     AND NOT a.attisdropped;
 
-alter table public.teachers
-  drop constraint if exists teachers_unavailable_reason_len;
-alter table public.teachers
-  add constraint teachers_unavailable_reason_len
-  check (unavailable_reason is null or char_length(unavailable_reason) <= 200);
+  IF v_tid_type IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'profiles'
+       AND column_name = 'teacher_id'
+  ) THEN
+    EXECUTE format(
+      'ALTER TABLE public.profiles ADD COLUMN teacher_id %s REFERENCES public.teachers(id) ON DELETE SET NULL',
+      v_tid_type
+    );
+  END IF;
+END $$;
 
--- 2) Remove 'under_maintenance' from academic/admin departments
-update public.departments
-set status = 'unavailable'
-where category in ('academic', 'admin')
-  and status::text = 'under_maintenance';
+-- 3. Backfill profiles.teacher_id if an unlinked teacher row already matches by name or existing link column
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'teachers' AND column_name = 'profile_id'
+  ) THEN
+    EXECUTE '
+      UPDATE public.profiles p
+         SET teacher_id = t.id
+        FROM public.teachers t
+       WHERE t.profile_id = p.id
+         AND p.teacher_id IS NULL
+    ';
+  END IF;
 
-create or replace function public.guard_department_status() returns trigger
-language plpgsql as $$
-begin
-  if new.category in ('academic', 'admin') and new.status::text = 'under_maintenance' then
-    raise exception 'Academic and administrative departments cannot be set to under_maintenance.';
-  end if;
-  return new;
-end;
-$$;
+  UPDATE public.profiles p
+     SET teacher_id = t.id
+    FROM public.teachers t
+   WHERE lower(trim(p.full_name)) = lower(trim(t.full_name))
+     AND p.teacher_id IS NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM public.profiles p2 WHERE p2.teacher_id = t.id
+     );
+END $$;
 
-drop trigger if exists trg_guard_department_status on public.departments;
-create trigger trg_guard_department_status
-  before insert or update of status, category on public.departments
-  for each row execute function public.guard_department_status();
+-- 4. RLS policies for public.teachers
+DROP POLICY IF EXISTS "teachers_admin_all" ON public.teachers;
+CREATE POLICY "teachers_admin_all" ON public.teachers
+  FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin' AND approved = true
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin' AND approved = true
+    )
+  );
 
--- 3) Enforce that a teacher can belong to ONLY ONE department (academic/admin)
---    while still allowing multiple physical facilities in department_staff.
-with ranked_depts as (
-  select ds.teacher_id,
-         ds.department_id,
-         row_number() over (partition by ds.teacher_id order by d.name) as rn
-  from public.department_staff ds
-  join public.departments d on d.id = ds.department_id
-  where d.category in ('academic', 'admin')
-)
-delete from public.department_staff ds
-using ranked_depts rd
-where ds.teacher_id = rd.teacher_id
-  and ds.department_id = rd.department_id
-  and rd.rn > 1;
+DROP POLICY IF EXISTS "teachers_self_update" ON public.teachers;
+CREATE POLICY "teachers_self_update" ON public.teachers
+  FOR UPDATE TO authenticated
+  USING (
+    id = (
+      SELECT teacher_id FROM public.profiles
+      WHERE id = auth.uid() AND approved = true
+    )
+  )
+  WITH CHECK (
+    id = (
+      SELECT teacher_id FROM public.profiles
+      WHERE id = auth.uid() AND approved = true
+    )
+  );
 
-create or replace function public.enforce_single_teacher_department() returns trigger
-language plpgsql as $$
-declare
-  v_cat text;
-begin
-  select category into v_cat from public.departments where id = new.department_id;
-  if v_cat in ('academic', 'admin') then
-    delete from public.department_staff ds
-    using public.departments d
-    where ds.department_id = d.id
-      and ds.teacher_id = new.teacher_id
-      and ds.department_id <> new.department_id
-      and d.category in ('academic', 'admin');
-  end if;
-  return new;
-end;
-$$;
+-- 5. RLS policy for public.department_staff (adapts to teacher_id or profile_id)
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "dept_staff_self_manage" ON public.department_staff;
 
-drop trigger if exists trg_enforce_single_teacher_department on public.department_staff;
-create trigger trg_enforce_single_teacher_department
-  before insert or update on public.department_staff
-  for each row execute function public.enforce_single_teacher_department();
-
--- 4) Update teachers_board view with department_name, handles, unavailable_reason, and schedule
-drop view if exists public.teachers_board;
-
-create view public.teachers_board with (security_invoker = true) as
-select t.id,
-       t.full_name as name,
-       case
-         when t.status is null or t.updated_at is null
-              or (t.updated_at at time zone public.school_tz())::date
-                 <> (now() at time zone public.school_tz())::date
-         then 'not_updated'
-         else t.status::text
-       end as display_status,
-       t.updated_at,
-       t.avatar_path,
-       t.rank_level,
-       t.description,
-       t.unavailable_reason,
-       t.schedule,
-       (select d.name
-          from public.department_staff ds join public.departments d on d.id = ds.department_id
-         where ds.teacher_id = t.id and d.is_active and d.category in ('academic', 'admin')
-         limit 1) as department_name,
-       (select string_agg(d.name, ', ' order by d.name)
-          from public.department_staff ds join public.departments d on d.id = ds.department_id
-         where ds.teacher_id = t.id and d.is_active and d.category = 'facility') as handles
-from public.teachers t
-where t.is_active;
-
-grant select on public.teachers_board to anon, authenticated;
-
--- 5) Update departments_board view so assigned_teachers includes schedule, unavailable_reason, description, and facilities
-drop view if exists public.departments_board;
-
-create view public.departments_board with (security_invoker = true) as
-select d.id,
-       d.name,
-       d.category,
-       case
-         when d.category = 'facility' and d.status::text = 'under_maintenance' then 'under_maintenance'
-         when d.status is null or d.updated_at is null
-              or (d.updated_at at time zone public.school_tz())::date
-                 <> (now() at time zone public.school_tz())::date
-         then 'not_updated'
-         else d.status::text
-       end as display_status,
-       d.updated_at,
-       d.building,
-       d.floor_level,
-       (select string_agg(t.full_name, ', ' order by t.full_name)
-          from public.department_staff ds join public.teachers t on t.id = ds.teacher_id
-         where ds.department_id = d.id and t.is_active) as handlers,
-       d.open_time,
-       d.close_time,
-       coalesce(
-         (select jsonb_agg(
-            jsonb_build_object(
-              'id', t.id,
-              'name', t.full_name,
-              'rank_level', t.rank_level,
-              'avatar_path', t.avatar_path,
-              'description', t.description,
-              'unavailable_reason', t.unavailable_reason,
-              'schedule', t.schedule,
-              'department_name', d.name,
-              'updated_at', t.updated_at,
-              'handles', (
-                select string_agg(f.name, ', ' order by f.name)
-                from public.department_staff ds2 join public.departments f on f.id = ds2.department_id
-                where ds2.teacher_id = t.id and f.is_active and f.category = 'facility'
-              ),
-              'display_status',
-                case
-                  when t.status is null or t.updated_at is null
-                       or (t.updated_at at time zone public.school_tz())::date
-                          <> (now() at time zone public.school_tz())::date
-                  then 'not_updated'
-                  else t.status::text
-                end
-            )
-            order by
-              case
-                when t.status = 'available'
-                     and t.updated_at is not null
-                     and (t.updated_at at time zone public.school_tz())::date
-                         = (now() at time zone public.school_tz())::date
-                then 0 else 1
-              end,
-              t.full_name
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'department_staff' AND column_name = 'teacher_id'
+  ) THEN
+    EXECUTE '
+      CREATE POLICY "dept_staff_self_manage" ON public.department_staff
+        FOR ALL TO authenticated
+        USING (
+          teacher_id = (
+            SELECT teacher_id FROM public.profiles
+            WHERE id = auth.uid() AND approved = true
           )
-          from public.department_staff ds
-          join public.teachers t on t.id = ds.teacher_id
-          where ds.department_id = d.id and t.is_active),
-         '[]'::jsonb
-       ) as assigned_teachers
-from public.departments d
-where d.is_active;
+          OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND role = ''admin'' AND approved = true
+          )
+        )
+        WITH CHECK (
+          teacher_id = (
+            SELECT teacher_id FROM public.profiles
+            WHERE id = auth.uid() AND approved = true
+          )
+          OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND role = ''admin'' AND approved = true
+          )
+        )
+    ';
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'department_staff' AND column_name = 'profile_id'
+  ) THEN
+    EXECUTE '
+      CREATE POLICY "dept_staff_self_manage" ON public.department_staff
+        FOR ALL TO authenticated
+        USING (
+          profile_id = auth.uid()
+          OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND role = ''admin'' AND approved = true
+          )
+        )
+        WITH CHECK (
+          profile_id = auth.uid()
+          OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND role = ''admin'' AND approved = true
+          )
+        )
+    ';
+  END IF;
+END $$;
 
-grant select on public.departments_board to anon, authenticated;
+-- 6. Safe RPC to auto-create and link a teacher row for any approved user
+CREATE OR REPLACE FUNCTION public.ensure_my_teacher_record()
+RETURNS public.teachers
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_prof public.profiles;
+  v_teacher public.teachers;
+BEGIN
+  SELECT * INTO v_prof FROM public.profiles WHERE id = auth.uid();
+  IF NOT FOUND OR NOT COALESCE(v_prof.approved, false) THEN
+    RAISE EXCEPTION 'Your account is not approved yet.';
+  END IF;
+
+  IF v_prof.teacher_id IS NOT NULL THEN
+    SELECT * INTO v_teacher FROM public.teachers WHERE id = v_prof.teacher_id;
+    IF FOUND THEN
+      RETURN v_teacher;
+    END IF;
+  END IF;
+
+  SELECT t.* INTO v_teacher
+  FROM public.teachers t
+  WHERE lower(trim(t.full_name)) = lower(trim(v_prof.full_name))
+    AND NOT EXISTS (
+      SELECT 1 FROM public.profiles p WHERE p.teacher_id = t.id
+    )
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.teachers (full_name, is_active)
+    VALUES (v_prof.full_name, true)
+    RETURNING * INTO v_teacher;
+  END IF;
+
+  UPDATE public.profiles
+  SET teacher_id = v_teacher.id
+  WHERE id = auth.uid();
+
+  RETURN v_teacher;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.ensure_my_teacher_record() TO authenticated;
+
+-- 7. Refresh Supabase PostgREST schema cache immediately
+NOTIFY pgrst, 'reload schema';

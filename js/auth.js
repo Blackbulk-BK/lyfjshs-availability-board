@@ -77,11 +77,12 @@ export function fillRankSelect(select, selected = "") {
 
 export async function fetchDepartments() {
   const { data, error } = await supabase
-    .from("departments_board")
+    .from("departments")
     .select("id, name, category, building, floor_level")
+    .eq("is_active", true)
     .order("name");
   if (error) throw error;
-  return data;
+  return data ?? [];
 }
 
 export function renderDepartmentChecks(container, items, selected = new Set()) {
