@@ -134,6 +134,7 @@ async function fetchLinkedTeacher() {
 }
 
 // Ensure logged-in user has a linked row in public.teachers via profiles.teacher_id
+// Ensure logged-in user has a linked row in public.teachers via profiles.teacher_id
 async function ensureTeacherRecord() {
   if (myTeacher) return myTeacher;
 
@@ -142,6 +143,13 @@ async function ensureTeacherRecord() {
     myTeacher = existing;
     return myTeacher;
   }
+
+  const { data: rpcRow, error: rpcErr } = await supabase.rpc("ensure_my_teacher_record");
+  if (rpcErr) throw rpcErr;
+
+  myTeacher = rpcRow;
+  return myTeacher;
+}
 
   const { data: created, error } = await supabase
     .from("teachers")
@@ -926,3 +934,32 @@ async function init() {
 }
 
 init();
+
+async function init() {
+  try {
+    me = await requireLogin();
+    if (!me) return;
+
+    $("who").textContent = me.full_name;
+    $("logout").addEventListener("click", () => signOut());
+
+    if (!me.approved) {
+      $("pending").hidden = false;
+      return;
+    }
+
+    $("panel").hidden = false;
+    await loadItems();
+    if (!myTeacher) {
+      await ensureTeacherRecord();
+      await loadItems();
+    }
+    initScheduleEditor();
+    await initProfile();
+    initAddFacility();
+    initAvatar();
+  } catch (err) {
+    console.error(err);
+    flash($("dash-message"), err?.message || "Could not load your panel. Check your connection and refresh.", true);
+  }
+}
